@@ -1,557 +1,269 @@
 # Chapter 11: Reserves, Treasury, and Protocol Revenue
 
-Aave V3 is a protocol, and like any protocol that aspires to long-term sustainability, it needs revenue. Unlike a company that charges fees through an invoice, Aave's revenue is embedded directly into its smart contract logic. Every borrow, every flash loan, every liquidation --- the protocol silently skims a small percentage and directs it to the Aave treasury. This chapter explains exactly how that works, what the treasury holds, and how governance configures the parameters that control revenue.
+Every sustainable business needs a revenue model. Aave is no different --- except its revenue model is embedded directly in smart contract logic, not in invoices or subscription plans. Every borrow, every flash loan, every liquidation quietly directs a small share of value to the Aave treasury. Understanding this flow is essential because it explains the protocol's long-term sustainability, what funds governance operations, and why suppliers don't receive 100% of the interest borrowers pay.
 
 ---
 
-## 1. How Aave Generates Revenue
+## 1. Aave's Three Revenue Streams
 
-Aave has three sources of revenue:
+Aave earns money in three ways, each tied to a different protocol activity:
 
-1. **Reserve factor** --- a percentage of all borrow interest that goes to the protocol instead of suppliers. This is the primary revenue source.
-2. **Flash loan premiums** --- a portion of the flash loan fee is directed to the treasury.
-3. **Liquidation protocol fee** --- a cut of the liquidation bonus goes to the treasury (new in V3).
+| Revenue Source | How It Works | When It Generates Revenue |
+|---|---|---|
+| **Reserve factor** | A percentage of all borrow interest is diverted to the treasury instead of going to suppliers | Continuously, every second that debt is outstanding |
+| **Flash loan premiums** | A portion of the flash loan fee goes to the treasury | Every time someone executes a flash loan |
+| **Liquidation protocol fee** | A cut of the liquidation bonus goes to the treasury | Every time a position is liquidated |
 
-All three are configurable by governance, per asset. All three ultimately result in aTokens being minted to the treasury address. The treasury is, in effect, just another aToken holder --- one that continuously accrues interest on its growing balance.
+The reserve factor is the primary, steady revenue stream --- it generates income as long as anyone is borrowing. Flash loan premiums are episodic, spiking during arbitrage-heavy periods. Liquidation fees are correlated with market volatility --- they surge during crashes when liquidations are frequent.
 
-Let's examine each in detail.
+All three revenue streams ultimately result in the same thing: **aTokens minted to the treasury address**. The treasury is, in economic terms, just another depositor in Aave --- one whose balance grows automatically from both new revenue and the interest earned on its existing holdings.
 
 ---
 
-## 2. The Reserve Factor
+## 2. The Reserve Factor: Aave's Tax on Borrow Interest
 
-The reserve factor is the most important revenue parameter. It determines what percentage of borrow interest the protocol keeps for itself.
+The reserve factor is the most important revenue parameter. It is, conceptually, a tax on borrow interest. When borrowers pay interest, not all of it reaches suppliers. The reserve factor determines the protocol's cut.
 
-### The Concept
+### The Split
 
-When borrowers pay interest, that interest doesn't all go to suppliers. A portion --- the reserve factor --- is diverted to the Aave treasury. If the reserve factor for USDC is 10%, then for every dollar of interest paid by USDC borrowers, 90 cents goes to USDC suppliers and 10 cents goes to the Aave treasury.
+If the USDC reserve factor is 10%, then for every $100 of interest paid by USDC borrowers:
 
-This directly affects the supply rate. Recall the supply rate formula from Chapter 2:
+- **$90 goes to USDC suppliers** (through the rising liquidity index)
+- **$10 goes to the Aave treasury** (as newly minted aUSDC)
+
+This directly affects the supply rate formula from Chapter 2:
 
 ```
 supplyRate = borrowRate * utilizationRate * (1 - reserveFactor)
 ```
 
-The `(1 - reserveFactor)` term is the protocol's cut. A higher reserve factor means more revenue for the protocol but lower yields for suppliers. Governance must balance these competing interests.
+The `(1 - reserveFactor)` term is the protocol's take. A higher reserve factor means more revenue for Aave but lower yields for suppliers. Governance must balance two competing interests: protocol sustainability versus competitive supplier yields. Set the reserve factor too high and suppliers leave for better yields elsewhere. Set it too low and the treasury cannot fund development, audits, and grants.
 
-### Where It's Stored
+### Typical Reserve Factors
 
-The reserve factor is packed into the reserve's configuration bitmap. Each reserve in Aave V3 has a `ReserveConfigurationMap` that encodes dozens of parameters into a single `uint256`:
+| Asset Category | Typical Reserve Factor | Rationale |
+|---|---|---|
+| Stablecoins (USDC, USDT, DAI) | 10-20% | Low risk, high volume --- modest tax on a large base |
+| Major assets (ETH, WBTC) | 10-20% | Established, liquid --- standard rate |
+| Volatile/newer assets | 20-35% | Higher risk to the protocol justifies a larger cut |
+| High-risk assets | 30-50% | Compensates for elevated bad debt risk; builds a buffer |
 
-```solidity
-struct ReserveConfigurationMap {
-    uint256 data;
-}
+The economic logic is straightforward: riskier assets cost the protocol more if things go wrong (bad debt, oracle failures, liquidity crises), so the protocol charges a higher "insurance premium" via a larger reserve factor.
+
+### A Concrete Example
+
+Consider a market with $100 million of outstanding USDC borrows at a 5% average borrow rate and a 10% reserve factor:
+
+```
+Annual borrow interest paid       = $100M * 5%  = $5,000,000
+Treasury's share (10%)            = $5,000,000 * 10%  = $500,000/year
+Suppliers receive (90%)           = $5,000,000 * 90%  = $4,500,000/year
 ```
 
-The reserve factor occupies bits 64-79 (16 bits), allowing values from 0 to 65535. In practice, this represents a percentage with two decimal places of precision (basis points). A reserve factor of 1000 means 10.00%.
-
-```solidity
-library ReserveConfiguration {
-    uint256 internal constant RESERVE_FACTOR_MASK       = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFF0000FFFFFFFFFFFFFFFFFFFFFFFF;
-    uint256 internal constant RESERVE_FACTOR_START_BIT_POSITION = 64;
-
-    function setReserveFactor(
-        DataTypes.ReserveConfigurationMap memory self,
-        uint256 reserveFactor
-    ) internal pure {
-        require(reserveFactor <= MAX_VALID_RESERVE_FACTOR, Errors.INVALID_RESERVE_FACTOR);
-        self.data =
-            (self.data & RESERVE_FACTOR_MASK) |
-            (reserveFactor << RESERVE_FACTOR_START_BIT_POSITION);
-    }
-
-    function getReserveFactor(
-        DataTypes.ReserveConfigurationMap memory self
-    ) internal pure returns (uint256) {
-        return (self.data & ~RESERVE_FACTOR_MASK) >> RESERVE_FACTOR_START_BIT_POSITION;
-    }
-}
-```
-
-### Typical Values
-
-| Asset Category | Typical Reserve Factor |
-|---|---|
-| Stablecoins (USDC, USDT, DAI) | 10-20% |
-| Major assets (ETH, WBTC) | 10-20% |
-| Volatile/newer assets | 20-35% |
-| High-risk assets | 30-50% |
-
-Higher risk assets tend to have higher reserve factors. This compensates the protocol for the additional risk of listing them and creates a buffer in case of bad debt.
+That $500,000 per year is for USDC alone. Multiply across dozens of assets and multiple chain deployments, and the reserve factor becomes a substantial revenue engine.
 
 ---
 
 ## 3. How Treasury Accrual Works
 
-This is where it gets interesting. The treasury doesn't receive a continuous stream of tokens. Instead, treasury revenue is tracked as a running counter and periodically "realized" by minting aTokens to the treasury address.
+The treasury does not receive a continuous wire transfer of tokens. Instead, the protocol tracks accrued revenue as a running counter and periodically "realizes" it by minting aTokens to the treasury address.
 
-### The `_accrueToTreasury()` Function
+### The Accumulation Process
 
-Every time `reserve.updateState()` is called --- which happens on every user interaction with a reserve --- the protocol calculates how much interest has accrued to the treasury since the last update.
+Every time any user interacts with a reserve (supply, borrow, repay, withdraw, liquidate), the protocol updates that reserve's state. As part of this update, it calculates:
 
-Here is the core logic from `ReserveLogic.sol`:
+1. **Total debt before**: what all borrowers owed as of the last update
+2. **Total debt now**: what all borrowers owe right now, including newly accrued interest
+3. **Interest accrued**: the difference (debt now minus debt before)
+4. **Treasury's share**: interest accrued multiplied by the reserve factor
+5. **Store as scaled amount**: divide by the liquidity index and add to a running counter
 
-```solidity
-function _accrueToTreasury(
-    DataTypes.ReserveData storage reserve,
-    DataTypes.ReserveCache memory reserveCache
-) internal {
-    uint256 prevTotalVariableDebt = reserveCache.currScaledVariableDebt.rayMul(
-        reserveCache.currVariableBorrowIndex
-    );
+The running counter, `accruedToTreasury`, accumulates across many user interactions. Periodically, the protocol converts this counter into actual aTokens minted to the treasury address.
 
-    uint256 currTotalVariableDebt = reserveCache.currScaledVariableDebt.rayMul(
-        reserveCache.nextVariableBorrowIndex
-    );
+### Why Scaled Amounts Matter
 
-    uint256 prevTotalStableDebt = reserveCache.currTotalStableDebt;
-    uint256 currTotalStableDebt = reserveCache.currAvgStableBorrowRate != 0
-        ? reserveCache.currPrincipalStableDebt.rayMul(
-            MathUtils.calculateCompoundedInterest(
-                reserveCache.currAvgStableBorrowRate,
-                reserveCache.stableDebtLastUpdateTimestamp,
-                block.timestamp
-            )
-        )
-        : 0;
+The treasury's accrued revenue is stored as a "scaled" amount --- divided by the liquidity index --- for the same reason all aToken balances are stored this way (Chapter 3). This means the treasury's pending balance automatically grows as interest accrues. The treasury earns interest on its interest, just like any other supplier.
 
-    // Total interest accrued = new debt - old debt for both variable and stable
-    uint256 totalDebtAccrued = currTotalVariableDebt +
-        currTotalStableDebt -
-        prevTotalVariableDebt -
-        prevTotalStableDebt;
+### Numerical Walkthrough
 
-    // The treasury's share is totalDebtAccrued * reserveFactor
-    uint256 amountToMint = totalDebtAccrued.percentMul(
-        reserveCache.reserveConfiguration.getReserveFactor()
-    );
+Suppose between two consecutive interactions with the USDC reserve:
 
-    if (amountToMint != 0) {
-        // Store as scaled amount (divide by liquidity index)
-        reserve.accruedToTreasury += amountToMint
-            .rayDiv(reserveCache.nextLiquidityIndex)
-            .toUint128();
-    }
-}
+```
+Total USDC borrow debt grew from    $1,000,000.00  to  $1,000,095.24
+Interest accrued in this period    = $95.24
+Reserve factor                     = 10%
+Treasury's share                   = $95.24 * 10% = $9.52
+Suppliers received                 = $95.24 * 90% = $85.72
 ```
 
-### Breaking Down the Math
+The $9.52 is added (in scaled form) to the `accruedToTreasury` counter. When the counter is eventually realized, aUSDC tokens are minted to the treasury address for the full accumulated amount.
 
-The function performs these steps:
+### The Treasury Earns Compound Interest
 
-1. **Calculate previous total debt** --- the total amount owed by all borrowers as of the last update, for both variable and stable debt.
-2. **Calculate current total debt** --- the total amount owed right now, including interest that has accrued since the last update.
-3. **Compute the difference** --- this is the total interest that accrued during the period.
-4. **Multiply by reserve factor** --- the treasury's share of that interest.
-5. **Convert to scaled amount** --- divide by the current liquidity index to store as a scaled balance (just like any other aToken holder's balance).
+Here is the subtle but powerful implication: once the treasury holds aUSDC, those aTokens earn interest at the current supply rate, just like any other supplier's balance. So the treasury's revenue compounds:
 
-The result is added to `reserve.accruedToTreasury`, a running counter stored in `ReserveData`:
+- **Direct revenue**: new aTokens minted from the reserve factor
+- **Passive income**: interest earned on the treasury's existing aToken holdings
 
-```solidity
-struct ReserveData {
-    // ...
-    uint128 accruedToTreasury;
-    // ...
-}
-```
-
-### Why Scaled Amounts?
-
-The treasury accrual is stored as a scaled amount --- divided by the liquidity index --- for the same reason all aToken balances are stored as scaled amounts (Chapter 3). This means the treasury's "balance" automatically grows as the liquidity index increases. The treasury earns interest on its interest, just like any supplier.
-
-### When Are the aTokens Actually Minted?
-
-The `accruedToTreasury` counter accumulates over many interactions. The actual minting of aTokens to the treasury happens when `mintToTreasury()` is called:
-
-```solidity
-function mintToTreasury(
-    DataTypes.ReserveData storage reserve,
-    DataTypes.ReserveCache memory reserveCache
-) internal {
-    uint256 accruedToTreasury = reserve.accruedToTreasury;
-
-    if (accruedToTreasury != 0) {
-        reserve.accruedToTreasury = 0;
-
-        // Convert scaled amount back to actual amount
-        uint256 normalizedIncome = reserve.getNormalizedIncome();
-        uint256 amountToMint = accruedToTreasury.rayMul(normalizedIncome);
-
-        // Mint aTokens to the treasury address
-        IAToken(reserveCache.aTokenAddress).mintToTreasury(
-            amountToMint,
-            normalizedIncome
-        );
-    }
-}
-```
-
-This is called during `updateState()`. The protocol doesn't mint a separate ERC-20 transfer for every accrual --- it batches them. The `accruedToTreasury` counter is the batching mechanism.
-
-### Numerical Example
-
-Suppose:
-- Total variable borrow debt was 1,000,000 USDC at the last update
-- The variable borrow index increased from `1.050000e27` to `1.050100e27`
-- Reserve factor is 10%
-
-Then:
-```
-Previous debt   = scaledDebt * 1.050000 = 1,000,000
-Current debt    = scaledDebt * 1.050100 = 1,000,095.24  (approximately)
-Interest accrued = 95.24 USDC
-Treasury share   = 95.24 * 0.10 = 9.524 USDC
-Scaled amount    = 9.524 / 1.050100 = 9.069 (stored in accruedToTreasury)
-```
-
-The suppliers receive the remaining 85.72 USDC (95.24 - 9.52) through the liquidity index increase.
+If the treasury holds $10 million of aUSDC and the USDC supply rate is 3%, it earns $300,000 per year in passive interest --- on top of new revenue flowing in from the reserve factor.
 
 ---
 
-## 4. The Treasury Contract
+## 4. Flash Loan Revenue
 
-The treasury is not a special contract with complex logic. It is simply an address that holds aTokens. In most Aave V3 deployments, the treasury is a contract controlled by Aave governance (typically through the governance executor or a dedicated treasury controller).
+Flash loan premiums are the second revenue source. Every flash loan charges a fee (typically 0.09%, or 9 basis points), and that fee is split between suppliers and the treasury.
+
+### The Two Parameters
+
+| Parameter | Typical Value | What It Controls |
+|---|---|---|
+| `flashLoanPremiumTotal` | 9 (= 0.09%) | Total fee charged on every flash loan |
+| `flashLoanPremiumToProtocol` | 0-9 | Portion of the total fee that goes to the treasury |
+
+If `flashLoanPremiumTotal` is 9 (0.09%) and `flashLoanPremiumToProtocol` is 0, then suppliers receive the entire flash loan fee. If `flashLoanPremiumToProtocol` is set to, say, 3 (0.03%), then suppliers get 0.06% and the treasury gets 0.03%.
+
+### Example
+
+A flash loan of 10,000,000 USDC with a 0.09% total premium and 0.03% to the protocol:
+
+```
+Total premium       = 10,000,000 * 0.09% = $9,000
+To suppliers        = 10,000,000 * 0.06% = $6,000
+To treasury         = 10,000,000 * 0.03% = $3,000
+```
+
+The supplier portion stays in the aToken contract automatically (it increases the value of all aUSDC). The treasury portion is added to the `accruedToTreasury` counter, just like reserve factor revenue.
+
+### Zero-Fee Flash Loans for Whitelisted Borrowers
+
+Aave V3 introduced the `FLASH_BORROWER` role. Addresses granted this role pay zero premium on flash loans. Why would the protocol give away revenue? Because some integrations (like liquidation bots that protect the protocol's health) are worth subsidizing. A liquidation bot that can flash-borrow for free will liquidate more positions, reducing bad debt risk for the entire system.
+
+---
+
+## 5. Liquidation Protocol Fee
+
+The third revenue source, new in V3, is a cut of the liquidation bonus. When a position is liquidated, the liquidator receives a bonus (typically 5-10% of the collateral) as incentive. In V3, the protocol can claim a portion of that bonus.
+
+### How the Split Works
+
+The liquidation protocol fee is configured per asset and expressed as a percentage of the liquidation bonus. It does not increase the total bonus --- it reallocates part of the bonus from the liquidator to the treasury.
+
+### Numerical Example
+
+A position is liquidated with the following parameters:
+
+| Item | Amount |
+|---|---|
+| Debt being repaid | 1,000 USDC |
+| Collateral seized (including 5% bonus) | 1,050 USDC worth of ETH |
+| Liquidation bonus | 50 USDC worth of ETH |
+| Liquidation protocol fee | 10% of the bonus |
+
+```
+Protocol's cut      = $50 * 10%  = $5 (sent to treasury as aTokens)
+Liquidator receives = $1,050 - $5 = $1,045 worth of ETH
+Liquidator's profit = $1,045 - $1,000 = $45 (instead of $50)
+```
+
+The liquidator still profits handsomely ($45 on a $1,000 liquidation), but the protocol captures $5. During market crashes, when hundreds of millions of dollars of positions are liquidated, this adds up quickly.
+
+### Revenue Characteristics
+
+Liquidation protocol fees are the most volatile revenue source. During calm markets, few positions are liquidated and this revenue is minimal. During sharp downturns --- exactly when a protocol's treasury needs to be robust --- liquidation revenue surges. It acts as a natural counter-cyclical revenue stream.
+
+---
+
+## 6. The Treasury as Aave's Balance Sheet
+
+The treasury is not a complex contract. It is simply an address that holds aTokens. But economically, it functions as Aave's balance sheet --- the accumulated wealth of the protocol.
 
 ### What the Treasury Holds
 
-The treasury holds aTokens for every asset where a reserve factor is configured. Because these are aTokens, they continuously earn interest. The treasury is the largest "supplier" in many Aave markets.
+The treasury holds aTokens for every listed asset that has a non-zero reserve factor. Because these are interest-bearing tokens, the treasury's holdings grow continuously. On mature deployments, the treasury is often one of the largest "suppliers" in the protocol.
 
-For example, if the treasury holds 10 million aUSDC, and the USDC supply rate is 3%, the treasury earns 300,000 USDC per year in interest --- on top of the new aTokens being minted to it from the reserve factor.
+### What the Treasury Funds
 
-### Treasury Address Configuration
+Governance proposals can direct treasury funds toward:
 
-The treasury address is set per aToken during initialization:
+- **Protocol development**: funding the engineering teams that build and maintain Aave
+- **Security audits**: paying for code reviews and formal verification
+- **Bug bounties**: rewarding researchers who find vulnerabilities
+- **Grants**: funding ecosystem projects, integrations, and research
+- **Risk management**: compensating risk service providers (Gauntlet, Chaos Labs) who model and recommend parameter changes
+- **Bad debt coverage**: in extreme scenarios, treasury funds can cover protocol shortfalls
 
-```solidity
-function initialize(
-    IPool pool,
-    address treasury,
-    address underlyingAsset,
-    IAaveIncentivesController incentivesController,
-    uint8 aTokenDecimals,
-    string calldata aTokenName,
-    string calldata aTokenSymbol,
-    bytes calldata params
-) external override initializer {
-    // ...
-    _treasury = treasury;
-    // ...
-}
-```
+To withdraw funds, governance passes a proposal that redeems aTokens from the treasury for the underlying assets. This is the same as any supplier withdrawing --- the treasury burns its aTokens and receives the underlying tokens.
 
-The treasury address is typically the same across all aTokens in a deployment, but the architecture allows for different treasury addresses per asset if needed.
+### The Compounding Effect
 
-### Withdrawing from the Treasury
-
-Governance can withdraw funds from the treasury to fund development, grants, bug bounties, or other protocol needs. This is done through governance proposals that call the treasury controller, which in turn redeems aTokens for the underlying assets.
+The treasury's economic position is remarkably favorable. It receives new revenue from three sources, and all of that revenue earns additional interest once it arrives as aTokens. Over time, this compounding creates a growing safety buffer for the protocol. A well-funded treasury is the first line of defense against black swan events.
 
 ---
 
-## 5. Flash Loan Revenue
+## 7. PoolConfigurator: The Admin Panel
 
-Flash loan premiums are the second source of protocol revenue. Every flash loan charges a premium, and that premium is split between suppliers and the treasury.
+Every parameter described in this chapter --- reserve factors, flash loan premiums, liquidation protocol fees --- is configured through the `PoolConfigurator` contract. This is the administrative interface for Aave governance. No one, not even the Pool contract itself, can change these parameters without going through PoolConfigurator.
 
-### The Two Premium Parameters
+### What Governance Can Tune
 
-```solidity
-// In Pool storage
-uint128 internal _flashLoanPremiumTotal;      // e.g., 9 = 0.09%
-uint128 internal _flashLoanPremiumToProtocol; // e.g., 0 = 0%
-```
-
-- `flashLoanPremiumTotal` --- the total premium charged on flash loans, in basis points divided by 100. A value of `9` means 0.09% (9 basis points). This is the total fee.
-- `flashLoanPremiumToProtocol` --- the portion of the total premium that goes to the treasury. The remainder goes to suppliers.
-
-The premium paid to suppliers simply stays in the aToken contract (increasing the value of all aTokens). The premium paid to the treasury is recorded in `accruedToTreasury`:
-
-```solidity
-// From FlashLoanLogic.sol (simplified)
-uint256 totalPremium = amount.percentMul(flashLoanPremiumTotal);
-uint256 premiumToProtocol = amount.percentMul(flashLoanPremiumToProtocol);
-uint256 premiumToLP = totalPremium - premiumToProtocol;
-
-// The premiumToLP stays in the aToken contract automatically
-// (the borrower repays amount + totalPremium to the aToken)
-
-// The premiumToProtocol is tracked for later minting
-if (premiumToProtocol != 0) {
-    reserve.accruedToTreasury += premiumToProtocol
-        .rayDiv(reserveCache.nextLiquidityIndex)
-        .toUint128();
-}
-```
-
-### Flash Loan Premium for Whitelisted Borrowers
-
-Aave V3 introduced the `FLASH_BORROWER` role. Addresses with this role pay zero premium on flash loans. This is useful for protocol integrations (e.g., liquidation bots that the protocol wants to incentivize). The check is straightforward:
-
-```solidity
-if (ACLManager.isFlashBorrower(msg.sender)) {
-    // Premium is 0 for this borrower
-    totalPremium = 0;
-} else {
-    totalPremium = amount.percentMul(flashLoanPremiumTotal);
-}
-```
-
----
-
-## 6. Liquidation Protocol Fee
-
-Aave V3 introduced a new revenue source: the liquidation protocol fee. When a liquidation occurs, the liquidator receives a bonus (the liquidation bonus, e.g., 5%). In V3, the protocol can take a cut of that bonus.
-
-### How It Works
-
-The liquidation protocol fee is configured per asset, stored in the reserve configuration bitmap. It represents the percentage of the liquidation bonus that goes to the treasury.
-
-```solidity
-// From LiquidationLogic.sol (simplified)
-if (vars.liquidationProtocolFeePercentage != 0) {
-    uint256 bonusCollateral = vars.actualCollateralToLiquidate - vars.actualDebtToLiquidate;
-    vars.liquidationProtocolFee = bonusCollateral.percentMul(
-        vars.liquidationProtocolFeePercentage
-    );
-    vars.actualCollateralToLiquidate -= vars.liquidationProtocolFee;
-}
-```
-
-### Numerical Example
-
-Suppose a position is liquidated:
-- Debt being repaid: 1,000 USDC
-- Collateral value at liquidation: 1,050 USDC worth of ETH (5% bonus)
-- Liquidation protocol fee: 10% of the bonus
-
-```
-Total bonus              = 1,050 - 1,000 = 50 USDC worth of ETH
-Protocol fee             = 50 * 10% = 5 USDC worth of ETH
-Liquidator receives      = 1,050 - 5 = 1,045 USDC worth of ETH
-Treasury receives        = 5 USDC worth of ETH (as aTokens)
-```
-
-The liquidator still profits (45 USDC worth of bonus instead of 50), but the protocol captures a portion. This creates meaningful revenue during market turbulence when liquidations are frequent.
-
-### Where the Fee Goes
-
-The liquidation protocol fee is sent directly to the treasury as aTokens (or the underlying collateral, depending on whether the liquidator chose to receive aTokens):
-
-```solidity
-if (vars.liquidationProtocolFee != 0) {
-    // Transfer the protocol fee to the treasury
-    // If liquidator receives aTokens, mint aTokens to treasury
-    // If liquidator receives underlying, transfer underlying to treasury
-    IAToken(vars.collateralAToken).transferOnLiquidation(
-        params.user,
-        IAToken(vars.collateralAToken).RESERVE_TREASURY_ADDRESS(),
-        vars.liquidationProtocolFee
-    );
-}
-```
-
----
-
-## 7. Reserve Configuration Parameters
-
-Every asset listed on Aave V3 has a comprehensive set of configurable parameters. These are all packed into the `ReserveConfigurationMap` bitmap. Here is the complete list:
-
-| Parameter | Bits | Description |
+| Parameter | What It Controls | Who Can Change It |
 |---|---|---|
-| LTV | 0-15 | Maximum loan-to-value ratio. How much you can borrow against this collateral. E.g., 8000 = 80%. |
-| Liquidation Threshold | 16-31 | At what LTV ratio positions become liquidatable. E.g., 8500 = 85%. |
-| Liquidation Bonus | 32-47 | Bonus paid to liquidators. E.g., 10500 = 5% bonus (100% + 5%). |
-| Decimals | 48-55 | Token decimals (e.g., 6 for USDC, 18 for ETH). |
-| Active | 56 | Whether the reserve is active. If false, no operations are possible. |
-| Frozen | 57 | If true, no new supply or borrow. Repay, withdraw, and liquidation still work. |
-| Borrowing Enabled | 58 | Whether borrowing is allowed for this asset. |
-| Stable Rate Borrowing Enabled | 59 | Whether stable rate borrowing is allowed. |
-| Paused | 60 | If true, ALL operations are disabled including repay and withdraw. |
-| Borrowable in Isolation | 61 | Whether this asset can be borrowed when the user is in isolation mode. |
-| Siloed Borrowing | 62 | If true, borrowing this asset prevents borrowing anything else. |
-| Flash Loaning Enabled | 63 | Whether this asset is available for flash loans. |
-| Reserve Factor | 64-79 | Protocol's cut of borrow interest (basis points). |
-| Borrow Cap | 80-115 | Maximum total borrows (in whole token units). 0 = no cap. |
-| Supply Cap | 116-151 | Maximum total supply (in whole token units). 0 = no cap. |
-| Liquidation Protocol Fee | 152-167 | Protocol's cut of liquidation bonus (basis points). |
-| E-Mode Category | 168-175 | Which E-Mode category this asset belongs to. 0 = none. |
-| Unbacked Mint Cap | 176-211 | For Portal: max unbacked aTokens that can be minted. |
-| Debt Ceiling | 212-255 | For isolation mode: max debt in USD that can be borrowed against this collateral. |
+| Reserve factor | Protocol's cut of borrow interest | Risk Admin or Pool Admin |
+| Flash loan premium (total) | Total fee on flash loans | Pool Admin |
+| Flash loan premium (protocol) | Treasury's share of flash loan fees | Pool Admin |
+| Liquidation protocol fee | Protocol's cut of liquidation bonus | Risk Admin or Pool Admin |
+| LTV | Maximum loan-to-value ratio | Risk Admin or Pool Admin |
+| Liquidation threshold | When positions become liquidatable | Risk Admin or Pool Admin |
+| Liquidation bonus | Incentive for liquidators | Risk Admin or Pool Admin |
+| Supply cap | Maximum total deposits | Risk Admin or Pool Admin |
+| Borrow cap | Maximum total borrows | Risk Admin or Pool Admin |
+| Interest rate strategy | The entire rate curve | Risk Admin or Pool Admin |
+| Freeze / Pause | Emergency controls | Risk/Pool Admin (freeze), Emergency/Pool Admin (pause) |
 
-All 256 bits of a single `uint256` are used. This is an extremely gas-efficient design --- reading all parameters for a reserve requires only a single storage read.
+### The Consistent Pattern
 
-### Reading the Configuration
+Every configuration change follows the same flow:
 
-```solidity
-// Get the full configuration for a reserve
-DataTypes.ReserveConfigurationMap memory config = pool.getConfiguration(asset);
+1. An authorized address calls a function on PoolConfigurator
+2. PoolConfigurator reads the current reserve configuration from Pool
+3. It validates the new parameter
+4. It updates the configuration and writes it back to Pool
+5. It emits an event for transparency
 
-// Decode individual parameters
-(uint256 ltv, uint256 liquidationThreshold, uint256 liquidationBonus,
- uint256 decimals, uint256 reserveFactor, uint256 eModeCategoryId) =
-    config.getParams();
+This separation of concerns means the Pool itself contains no admin logic. It stores data and executes operations. All governance logic lives in PoolConfigurator, which acts as a gatekeeper.
 
-// Or read individual flags
-bool isActive = config.getActive();
-bool isFrozen = config.getFrozen();
-bool borrowingEnabled = config.getBorrowingEnabled();
-```
+### Listing New Assets
+
+One of the most consequential governance actions is listing a new asset. When governance calls `initReserves()` on PoolConfigurator, the protocol deploys proxy contracts for the aToken, stable debt token, and variable debt token, initializes them with the correct parameters, registers the reserve in the Pool, and sets the interest rate strategy. A single governance proposal can list multiple assets at once.
 
 ---
 
-## 8. PoolConfigurator: How Governance Manages Reserves
+## 8. Putting It All Together: The Revenue Lifecycle
 
-The `PoolConfigurator` is the administrative contract through which governance manages reserve parameters. It is the only contract authorized to modify reserve configurations in the Pool. No one --- not even the Pool contract itself --- can change these parameters without going through the PoolConfigurator.
+Let's trace the complete revenue lifecycle for a single reserve (USDC) over one month:
 
-### Listing New Assets: `initReserves()`
+**Week 1-4: Interest accrues**
 
-To list a new asset on Aave, governance calls `initReserves()` on the PoolConfigurator:
+$200 million of USDC is borrowed at an average rate of 4%. Over a month, approximately $667,000 of interest accrues. With a 10% reserve factor, the treasury's share is $66,700. This accumulates in the `accruedToTreasury` counter.
 
-```solidity
-function initReserves(
-    ConfiguratorInputTypes.InitReserveInput[] calldata input
-) external override onlyAssetListingOrPoolAdmins {
-    for (uint256 i = 0; i < input.length; i++) {
-        // Deploy aToken, stableDebtToken, variableDebtToken proxies
-        // Initialize them with the correct parameters
-        // Register the reserve in the Pool
-        // Set the interest rate strategy
+**Periodically: Flash loans occur**
 
-        IPool(pool).initReserve(
-            input[i].underlyingAsset,
-            input[i].aTokenImpl,
-            input[i].stableDebtTokenImpl,
-            input[i].variableDebtTokenImpl,
-            input[i].interestRateStrategyAddress
-        );
-    }
-}
+50 flash loans totaling $500 million in USDC are executed, each paying a 0.09% premium. Total premiums: $450,000. If the protocol's share is one-third, that is $150,000 to the treasury.
+
+**During a market dip: Liquidations happen**
+
+$10 million of positions are liquidated with a 5% bonus and a 10% protocol fee. The bonus is $500,000, of which $50,000 goes to the treasury.
+
+**Monthly total for USDC alone:**
+
+```
+Reserve factor revenue       = $66,700
+Flash loan revenue           = $150,000
+Liquidation protocol fees    = $50,000
+Total                        = $266,700
 ```
 
-Each `InitReserveInput` specifies:
-- The underlying asset address
-- Implementation addresses for aToken, stable debt token, and variable debt token
-- The interest rate strategy contract
-- Treasury address
-- Incentives controller
-- Token names and symbols
-
-### Setting the Reserve Factor
-
-```solidity
-function setReserveFactor(
-    address asset,
-    uint256 newReserveFactor
-) external override onlyRiskOrPoolAdmins {
-    DataTypes.ReserveConfigurationMap memory currentConfig = _pool.getConfiguration(asset);
-    uint256 oldReserveFactor = currentConfig.getReserveFactor();
-
-    currentConfig.setReserveFactor(newReserveFactor);
-    _pool.setConfiguration(asset, currentConfig);
-
-    emit ReserveFactorChanged(asset, oldReserveFactor, newReserveFactor);
-}
-```
-
-Note the `onlyRiskOrPoolAdmins` modifier. This means either the RISK_ADMIN or POOL_ADMIN role can change the reserve factor. We cover these roles in Chapter 12.
-
-### Configuring Collateral Parameters
-
-```solidity
-function configureReserveAsCollateral(
-    address asset,
-    uint256 ltv,
-    uint256 liquidationThreshold,
-    uint256 liquidationBonus
-) external override onlyRiskOrPoolAdmins {
-    DataTypes.ReserveConfigurationMap memory currentConfig = _pool.getConfiguration(asset);
-
-    // Validation: if liquidationThreshold != 0, bonus must be > 10000
-    // (because 10000 = 100%, so bonus is relative to 100%)
-    if (liquidationThreshold != 0) {
-        require(liquidationBonus > PercentageMath.PERCENTAGE_FACTOR, Errors.INVALID_RESERVE_PARAMS);
-    }
-
-    // Validation: LTV must be <= liquidation threshold
-    require(ltv <= liquidationThreshold, Errors.INVALID_RESERVE_PARAMS);
-
-    currentConfig.setLtv(ltv);
-    currentConfig.setLiquidationThreshold(liquidationThreshold);
-    currentConfig.setLiquidationBonus(liquidationBonus);
-
-    _pool.setConfiguration(asset, currentConfig);
-
-    emit CollateralConfigurationChanged(asset, ltv, liquidationThreshold, liquidationBonus);
-}
-```
-
-### Emergency Controls
-
-```solidity
-// Freeze a reserve: no new supply or borrow, but repay/withdraw/liquidation still work
-function setReserveFreeze(
-    address asset,
-    bool freeze
-) external override onlyRiskOrPoolAdmins {
-    DataTypes.ReserveConfigurationMap memory currentConfig = _pool.getConfiguration(asset);
-    currentConfig.setFrozen(freeze);
-    _pool.setConfiguration(asset, currentConfig);
-    emit ReserveFrozen(asset, freeze);
-}
-
-// Pause a reserve: ALL operations disabled
-function setReservePause(
-    address asset,
-    bool paused
-) external override onlyPoolOrEmergencyAdmin {
-    DataTypes.ReserveConfigurationMap memory currentConfig = _pool.getConfiguration(asset);
-    currentConfig.setPaused(paused);
-    _pool.setConfiguration(asset, currentConfig);
-    emit ReservePaused(asset, paused);
-}
-
-// Pause the entire pool
-function setPoolPause(
-    bool paused
-) external override onlyEmergencyAdmin {
-    address[] memory reserves = _pool.getReservesList();
-    for (uint256 i = 0; i < reserves.length; i++) {
-        if (reserves[i] != address(0)) {
-            setReservePause(reserves[i], paused);
-        }
-    }
-}
-```
-
-### Other Configuration Functions
-
-| Function | Who Can Call | What It Does |
-|---|---|---|
-| `setBorrowableInIsolation()` | POOL_ADMIN | Allow/disallow borrowing in isolation mode |
-| `setReserveBorrowing()` | RISK_ADMIN, POOL_ADMIN | Enable/disable borrowing for an asset |
-| `setBorrowCap()` | RISK_ADMIN, POOL_ADMIN | Set maximum total borrows |
-| `setSupplyCap()` | RISK_ADMIN, POOL_ADMIN | Set maximum total supply |
-| `setReserveStableRateBorrowing()` | RISK_ADMIN, POOL_ADMIN | Enable/disable stable rate borrowing |
-| `setReserveFlashLoaning()` | RISK_ADMIN, POOL_ADMIN | Enable/disable flash loans for an asset |
-| `setAssetEModeCategory()` | RISK_ADMIN, POOL_ADMIN | Assign an asset to an E-Mode category |
-| `setDebtCeiling()` | RISK_ADMIN, POOL_ADMIN | Set isolation mode debt ceiling |
-| `setLiquidationProtocolFee()` | RISK_ADMIN, POOL_ADMIN | Set the liquidation protocol fee |
-| `setSiloedBorrowing()` | RISK_ADMIN, POOL_ADMIN | Enable siloed borrowing |
-| `updateAToken()` | POOL_ADMIN | Upgrade the aToken implementation |
-| `updateStableDebtToken()` | POOL_ADMIN | Upgrade the stable debt token implementation |
-| `updateVariableDebtToken()` | POOL_ADMIN | Upgrade the variable debt token implementation |
-| `setReserveInterestRateStrategyAddress()` | RISK_ADMIN, POOL_ADMIN | Change the interest rate model |
-
-### The Pattern
-
-Notice the consistent pattern across all PoolConfigurator functions:
-
-1. Read the current configuration from Pool
-2. Validate the new parameter
-3. Update the configuration bitmap
-4. Write the updated configuration back to Pool
-5. Emit an event
-
-This is clean separation of concerns. The PoolConfigurator handles authorization and validation. The Pool stores the data. The configuration bitmap provides gas-efficient storage.
+And this is for a single asset on a single chain. Across all assets and all deployments, Aave generates millions in monthly revenue, all flowing into a treasury that earns compound interest on its holdings.
 
 ---
 
@@ -559,8 +271,8 @@ This is clean separation of concerns. The PoolConfigurator handles authorization
 
 Aave V3's revenue model is built on three pillars:
 
-- **Reserve factor** on borrow interest --- the steady, predictable revenue stream
-- **Flash loan premiums** --- episodic but meaningful during high-activity periods
-- **Liquidation protocol fees** --- revenue that scales with market volatility
+- **Reserve factor** --- the steady, predictable revenue stream. A tax on borrow interest (typically 10-20%) that flows continuously to the treasury as long as anyone is borrowing.
+- **Flash loan premiums** --- episodic revenue that scales with DeFi activity. Split between suppliers and treasury.
+- **Liquidation protocol fees** --- counter-cyclical revenue that surges during market turbulence when the treasury needs it most.
 
-All revenue flows into the treasury as aTokens, which continue to earn interest. The entire system is configured through the PoolConfigurator, with every parameter packed into a gas-efficient bitmap. Governance has fine-grained control over every aspect of every reserve, and the access control system (covered in Chapter 12) ensures that only authorized roles can make changes.
+All revenue arrives as aTokens, which compound automatically. The treasury is Aave's balance sheet --- it funds development, security, grants, and acts as a buffer against protocol losses. Every parameter is configurable by governance through the PoolConfigurator, giving AAVE token holders fine-grained control over the protocol's economic model.

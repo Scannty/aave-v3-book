@@ -1,507 +1,271 @@
 # Chapter 3: Interest Rate Indexes and Scaled Balances
 
-This chapter covers one of the most elegant design patterns in all of DeFi: how Aave V3 tracks interest accrual for thousands of users without touching their individual balances. If you understand this chapter, everything that follows --- aTokens, debt tokens, supply/borrow flows --- will make immediate sense.
+This chapter covers one of the most elegant design patterns in all of DeFi: how Aave V3 tracks interest accrual for thousands of users without ever touching their individual balances. Once you understand this mechanism, everything else in the protocol --- aTokens, debt tokens, supply flows, liquidations --- falls into place.
 
 <video src="../animations/final/liquidity_index.webm" controls autoplay loop muted playsinline style="width:100%;max-width:800px;border-radius:8px;margin:20px 0"></video>
 
 ---
 
-## The Problem: Updating Balances Doesn't Scale
+## The Problem: You Cannot Update 10,000 Balances
 
-Imagine a naive implementation of a lending protocol. There are 10,000 users who have supplied ETH. Interest accrues every second. To keep everyone's balances accurate, the protocol would need to loop through all 10,000 users and update each of their stored balances every time interest should be credited.
+Imagine building a lending protocol the naive way. There are 10,000 users who have supplied ETH. Interest accrues every second. To keep everyone's balances correct, you would need to loop through all 10,000 accounts and update each one's stored balance every time interest should be credited.
 
-This is obviously impossible on a blockchain. Gas costs would be astronomical. Even if you tried batching, the protocol would grind to a halt. And interest accrues continuously --- you can't just "skip" updates without losing accuracy.
+On a blockchain, this is impossible. A single loop iteration costs gas. Ten thousand iterations would cost more gas than fits in a block. And interest accrues continuously --- you cannot skip updates without losing accuracy.
 
-So Aave needs a mechanism where:
+Even batching would not help. What if 500 new users deposit between batches? What if someone tries to withdraw mid-batch? The accounting becomes a nightmare.
 
-- Interest accrues continuously for all users
-- No loop over user balances is ever required
-- A single storage write can "apply" interest to every user simultaneously
-- Balances can be queried at any time and reflect up-to-date interest
+So Aave needs a system where:
 
-The answer is **indexes** and **scaled balances**.
+- Interest accrues for all users simultaneously
+- No loop over balances is ever required
+- A single storage write applies interest to every user at once
+- Any user's balance can be queried at any time and reflects up-to-date interest
 
----
-
-## The Liquidity Index
-
-The **liquidity index** is a cumulative multiplier that tracks how much value a unit of supplied capital has accumulated since the reserve was initialized. It starts at `1.0` (represented as `1e27` in Aave's ray math) and only ever increases.
-
-Think of it this way: if the liquidity index is currently `1.08`, that means one unit of capital deposited at the very beginning of the protocol would now be worth `1.08` units. The index encodes the entire history of supply-side interest into a single number.
-
-Every reserve in Aave V3 has its own liquidity index, stored in the `ReserveData` struct:
-
-```solidity
-struct ReserveData {
-    // ...
-    uint128 liquidityIndex;    // ray (1e27)
-    uint128 variableBorrowIndex; // ray (1e27)
-    uint128 currentLiquidityRate;  // ray, per-second rate
-    uint128 currentVariableBorrowRate; // ray, per-second rate
-    // ...
-    uint40 lastUpdateTimestamp;
-    // ...
-}
-```
-
-The `liquidityIndex` is updated every time someone interacts with the reserve --- on every supply, withdraw, borrow, repay, liquidation, or flash loan. Between interactions, it sits in storage unchanged, but the "true" index at any moment can be computed from the stored value plus the time elapsed.
-
-### Key Insight
-
-The liquidity index never decreases. It is a monotonically increasing value. Even if no one is borrowing (and the supply rate is zero), the index stays flat. It never goes down because interest is never negative in Aave.
+The solution is **indexes** and **scaled balances**.
 
 ---
 
-## The Variable Borrow Index
+## The Index: A Cumulative Multiplier
 
-The **variable borrow index** is the borrower-side equivalent of the liquidity index. It tracks how much a unit of variable-rate debt has grown since the reserve was initialized.
+The **liquidity index** is a single number, stored once per asset, that encodes the entire history of supply-side interest since the reserve was created. It starts at 1.0 and only ever increases.
 
-Because borrow rates are always higher than supply rates (the spread covers the reserve factor and accounts for un-utilized capital), the variable borrow index grows faster than the liquidity index.
+Think of it as an exchange rate between "original dollars" and "current dollars." If the liquidity index is 1.08, then one dollar deposited at the very beginning of the protocol is now worth $1.08. The index captures every second of interest that has ever accrued, compressed into one number.
 
-If the variable borrow index is `1.12`, that means one unit of variable debt taken at inception would now represent `1.12` units owed. A borrower who took a loan when the index was `1.05` and checks their debt when the index is `1.12` owes proportionally more.
+Every reserve has its own liquidity index. USDC has one, ETH has one, WBTC has one. They grow at different rates because each market has different utilization and interest rates.
 
-The mechanics are identical to the liquidity index, just applied to debt instead of deposits.
-
----
-
-## How Indexes Update
-
-Indexes are updated inside `ReserveLogic.sol`, in the `updateState()` function. This function is called at the top of virtually every user-facing operation. It ensures that all accounting is current before any state changes occur.
-
-The core update logic lives in the internal `_updateIndexes()` function:
-
-```solidity
-function _updateIndexes(
-    DataTypes.ReserveData storage reserve,
-    DataTypes.ReserveCache memory reserveCache
-) internal returns (bool) {
-    if (reserveCache.reserveLastUpdateTimestamp == uint40(block.timestamp)) {
-        return false; // Already updated this block, nothing to do
-    }
-
-    uint256 timeDelta = block.timestamp - reserveCache.reserveLastUpdateTimestamp;
-
-    // Update liquidity index
-    uint256 cumulatedLiquidityInterest = MathUtils.calculateLinearInterest(
-        reserveCache.currLiquidityRate,
-        reserveCache.reserveLastUpdateTimestamp
-    );
-    uint256 newLiquidityIndex = cumulatedLiquidityInterest.rayMul(
-        reserveCache.currLiquidityIndex
-    );
-    reserve.liquidityIndex = newLiquidityIndex.toUint128();
-
-    // Update variable borrow index
-    uint256 cumulatedVariableBorrowInterest = MathUtils.calculateCompoundedInterest(
-        reserveCache.currVariableBorrowRate,
-        reserveCache.reserveLastUpdateTimestamp,
-        block.timestamp
-    );
-    uint256 newVariableBorrowIndex = cumulatedVariableBorrowInterest.rayMul(
-        reserveCache.currVariableBorrowIndex
-    );
-    reserve.variableBorrowIndex = newVariableBorrowIndex.toUint128();
-
-    reserve.lastUpdateTimestamp = uint40(block.timestamp);
-    return true;
-}
-```
-
-### The Compounding Formulas
-
-There is a subtle but important difference in how the two indexes are computed.
-
-**Liquidity index** uses **linear (simple) interest** for the elapsed period:
-
-```
-newLiquidityIndex = oldLiquidityIndex * (1 + supplyRate * timeDelta / SECONDS_PER_YEAR)
-```
-
-In code (`MathUtils.calculateLinearInterest`):
-
-```solidity
-function calculateLinearInterest(
-    uint256 rate,
-    uint40 lastUpdateTimestamp
-) internal view returns (uint256) {
-    uint256 result = rate * (block.timestamp - uint256(lastUpdateTimestamp));
-    unchecked {
-        result = result / SECONDS_PER_YEAR;
-    }
-    result = result + WadRayMath.RAY; // 1 + rate * timeDelta
-    return result;
-}
-```
-
-**Variable borrow index** uses **compound interest** approximated by a Taylor expansion:
-
-```
-newVariableBorrowIndex = oldVariableBorrowIndex * (1 + rate/n)^n
-```
-
-Where `n` is the number of seconds elapsed. The actual implementation uses a binomial approximation to avoid the cost of exponentiation:
-
-```solidity
-function calculateCompoundedInterest(
-    uint256 rate,
-    uint40 lastUpdateTimestamp,
-    uint256 currentTimestamp
-) internal pure returns (uint256) {
-    uint256 exp = currentTimestamp - uint256(lastUpdateTimestamp);
-
-    if (exp == 0) {
-        return WadRayMath.RAY;
-    }
-
-    uint256 expMinusOne;
-    uint256 expMinusTwo;
-    uint256 basePowerTwo;
-    uint256 basePowerThree;
-
-    unchecked {
-        expMinusOne = exp - 1;
-        expMinusTwo = exp > 2 ? exp - 2 : 0;
-
-        basePowerTwo = rate.rayMul(rate) / (SECONDS_PER_YEAR * SECONDS_PER_YEAR);
-        basePowerThree = basePowerTwo.rayMul(rate) / SECONDS_PER_YEAR;
-    }
-
-    uint256 secondTerm = exp * expMinusOne * basePowerTwo;
-    unchecked {
-        secondTerm /= 2;
-    }
-
-    uint256 thirdTerm = exp * expMinusOne * expMinusTwo * basePowerThree;
-    unchecked {
-        thirdTerm /= 6;
-    }
-
-    return WadRayMath.RAY
-        + (rate * exp) / SECONDS_PER_YEAR
-        + secondTerm
-        + thirdTerm;
-}
-```
-
-This is a third-order Taylor expansion of `(1 + rate/SECONDS_PER_YEAR)^exp`. The first three terms give a very accurate approximation for typical rate values and time intervals.
-
-### Why Linear for Supply and Compound for Borrow?
-
-The supply side uses linear interest because the error is negligible for the typical intervals between updates (a few seconds to a few hours at most). The borrow side uses compound interest because borrow rates are higher and the protocol needs precise debt tracking to ensure solvency. The difference between the compound borrow interest and the linear supply interest also generates a small surplus that benefits the protocol.
+**The variable borrow index** is the same concept for the debt side. It tracks how much a unit of variable-rate debt has grown since inception. Because borrow rates are always higher than supply rates (the spread covers the reserve factor and un-utilized capital), the borrow index grows faster than the liquidity index.
 
 ---
 
-## Scaled Balances
+## Scaled Balances: The Accounting Trick
 
 <video src="../animations/final/scaled_balance.webm" controls autoplay loop muted playsinline style="width:100%;max-width:800px;border-radius:8px;margin:20px 0"></video>
 
-Now for the key mechanism. Aave never stores a user's "actual" balance. Instead, it stores a **scaled balance** --- the user's balance divided by the liquidity index at the time of their deposit (or the borrow index at the time of their borrow).
-
-The scaled balance answers the question: "What is the equivalent value of this user's position, expressed in terms of the index at time zero?"
-
-### The Core Equations
-
-**On deposit:**
+Here is the key insight. Aave never stores your "actual" balance. Instead, it stores a **scaled balance** --- your deposit amount divided by the liquidity index at the moment you deposited.
 
 ```
-scaledBalance = depositAmount / currentLiquidityIndex
+scaledBalance = depositAmount / liquidityIndexAtTimeOfDeposit
 ```
 
-**To read actual balance at any time:**
+To recover your actual balance at any point in the future, you multiply by the *current* index:
 
 ```
 actualBalance = scaledBalance * currentLiquidityIndex
 ```
 
-**On borrow:**
+Why does this work? Because the index is a cumulative multiplier. Dividing by the index at deposit time "normalizes" your balance to the protocol's starting point. Multiplying by the current index then applies all the interest that has accrued since you deposited.
+
+Here is the math made explicit. Say you deposit $1,000 when the index is 1.05, and later the index reaches 1.10:
 
 ```
-scaledDebt = borrowAmount / currentVariableBorrowIndex
+scaledBalance = 1000 / 1.05 = 952.38
+actualBalance = 952.38 * 1.10 = 1047.62
 ```
 
-**To read actual debt at any time:**
+You earned $47.62, which is exactly the interest that accrued between index 1.05 and 1.10. The ratio `1.10 / 1.05 = 1.0476` represents a 4.76% return over that period, regardless of how long it took or what the rates were along the way.
 
-```
-actualDebt = scaledDebt * currentVariableBorrowIndex
-```
-
-### Why This Works
-
-The scaled balance is a **normalized** representation. By dividing out the index at deposit time, you get a number that, when multiplied by *any future index*, gives the correct balance including all interest accrued between those two points.
-
-This works because the index is a cumulative multiplier. If the index was `1.05` when you deposited and is now `1.10`:
-
-```
-actualBalance = (amount / 1.05) * 1.10 = amount * (1.10 / 1.05) = amount * 1.0476...
-```
-
-You earned approximately 4.76% interest, which is exactly the interest that accrued between those two index values.
-
-### Numerical Example
-
-Let's trace through a concrete scenario.
-
-**Step 1: Alice deposits 1000 USDC**
-
-The reserve just launched, so `liquidityIndex = 1.0` (1e27 in ray).
-
-```
-Alice's scaledBalance = 1000 / 1.0 = 1000
-```
-
-Stored in contract: `balances[Alice] = 1000` (in scaled units)
-
-**Step 2: Time passes, interest accrues**
-
-Borrowers are paying interest. The `liquidityIndex` has grown to `1.03`.
-
-Alice hasn't interacted with the protocol at all. Her stored scaled balance is still `1000`. But if she calls `balanceOf(Alice)`:
-
-```
-actualBalance = 1000 * 1.03 = 1030 USDC
-```
-
-Alice has earned 30 USDC in interest without a single transaction.
-
-**Step 3: Bob deposits 500 USDC**
-
-The `liquidityIndex` is now `1.03`.
-
-```
-Bob's scaledBalance = 500 / 1.03 = 485.44 (approximately)
-```
-
-Stored in contract: `balances[Bob] = 485.44` (in scaled units)
-
-**Step 4: More time passes**
-
-The `liquidityIndex` grows to `1.06`.
-
-Alice's balance:
-```
-1000 * 1.06 = 1060 USDC
-```
-
-Bob's balance:
-```
-485.44 * 1.06 = 514.57 USDC
-```
-
-Alice earned 60 USDC total (6% on her original 1000). Bob earned 14.57 USDC (about 2.91% on his 500, reflecting the shorter time he has been supplying).
+The same principle applies to debt. When you borrow, your debt is divided by the variable borrow index. To find your current debt, multiply by the current borrow index.
 
 ---
 
-## Why This Design Works
+## Alice and Bob: A Complete Walkthrough
 
-The elegance of the index-and-scaled-balance pattern comes down to a single insight: **you only need to update one number (the index) to effectively update every user's balance simultaneously**.
+Let's trace through a full scenario with actual numbers.
 
-Here is what this gives you:
+### T=0: Alice Deposits 1,000 USDC
 
-1. **O(1) state updates**: Updating the index is one storage write, regardless of whether there are 10 users or 10 million users.
-
-2. **O(1) balance queries**: Computing any user's balance is a single multiplication: `scaledBalance * index`. No iteration, no historical lookups.
-
-3. **No "stale balance" problem**: Even if a user never interacts with the protocol for months, their balance is always accurate when queried, because the index has been growing with every interaction by *any* user.
-
-4. **Composability**: Because `balanceOf()` returns the current actual balance, aTokens compose naturally with other DeFi protocols that read ERC-20 balances.
-
-5. **Correctness under concurrent deposits**: When multiple users deposit at different times, the scaled balance system handles them all correctly. Each user's scaled balance "locks in" the index at their deposit time, and the ratio between indexes handles the rest.
-
----
-
-## The `updateState()` Function: A Complete Walk-Through
-
-`updateState()` is the heartbeat of every reserve. It is called at the beginning of virtually every operation: `supply()`, `withdraw()`, `borrow()`, `repay()`, `liquidationCall()`, `flashLoan()`, and more. Here is what it does, step by step:
-
-```solidity
-function updateState(
-    DataTypes.ReserveData storage reserve,
-    DataTypes.ReserveCache memory reserveCache
-) internal {
-    // Step 1: Update indexes
-    bool isUpdated = _updateIndexes(reserve, reserveCache);
-
-    // Step 2: Accrue interest to treasury
-    if (isUpdated) {
-        _accrueToTreasury(reserve, reserveCache);
-    }
-}
-```
-
-### Step 1: Update Indexes
-
-As described above, `_updateIndexes()` computes the new liquidity index and variable borrow index based on the current rates and the time elapsed since the last update. If the last update was in the same block, it short-circuits and returns `false`.
-
-### Step 2: Accrue to Treasury
-
-After updating the indexes, the protocol mints a portion of the accrued interest to the Aave treasury. This is how the protocol earns revenue.
-
-The `_accrueToTreasury()` function computes how much total interest was generated by borrowers since the last update and how much of that interest is captured by the reserve factor:
-
-```solidity
-function _accrueToTreasury(
-    DataTypes.ReserveData storage reserve,
-    DataTypes.ReserveCache memory reserveCache
-) internal {
-    uint256 prevTotalVariableDebt = reserveCache.currScaledVariableDebt.rayMul(
-        reserveCache.currVariableBorrowIndex
-    );
-
-    uint256 currTotalVariableDebt = reserveCache.currScaledVariableDebt.rayMul(
-        reserve.variableBorrowIndex
-    );
-
-    // Total debt increase = new debt - old debt
-    uint256 totalDebtAccrued = currTotalVariableDebt - prevTotalVariableDebt;
-
-    // Treasury gets reserveFactor% of all interest
-    uint256 amountToMint = totalDebtAccrued.percentMul(
-        reserveCache.reserveFactor
-    );
-
-    if (amountToMint != 0) {
-        reserve.accruedToTreasury += amountToMint.rayDiv(
-            reserve.liquidityIndex
-        ).toUint128();
-    }
-}
-```
-
-Notice that `accruedToTreasury` is stored in **scaled units** (divided by the liquidity index), consistent with how all balances are stored in the system.
-
-### The Full Sequence
-
-Putting it all together, here is the timeline of a single `supply()` call:
-
-1. User calls `Pool.supply(USDC, 1000, onBehalfOf, referralCode)`
-2. Pool calls `reserve.updateState()`:
-   - Compute time elapsed since last update
-   - Calculate new `liquidityIndex` (linear interest)
-   - Calculate new `variableBorrowIndex` (compound interest)
-   - Compute treasury accrual and add to `accruedToTreasury`
-   - Write updated indexes and timestamp to storage
-3. Pool transfers 1000 USDC from user to the aToken contract
-4. Pool calls `aToken.mint()` with scaled amount = `1000 / newLiquidityIndex`
-5. Interest rates are recalculated based on the new utilization
-
-Every operation follows this same pattern: update state first, then act.
-
----
-
-## Full Numerical Walkthrough
-
-Let's work through a complete example with exact numbers to cement the concept.
-
-### Setup
-
-- Reserve: USDC
-- Reserve factor: 10%
-- Starting liquidity index: `1.0` (1e27 ray)
-- Starting variable borrow index: `1.0`
-
-### T=0: Alice Supplies 1000 USDC
+The reserve just launched. The liquidity index is 1.000000.
 
 ```
-liquidityIndex = 1.000000
-Alice deposits 1000 USDC
-scaledBalance(Alice) = 1000 / 1.000000 = 1000.00
+Alice's scaledBalance = 1000 / 1.000000 = 1000.00
 ```
 
-| User  | Scaled Balance | Actual Balance |
-|-------|---------------|----------------|
-| Alice | 1000.00       | 1000.00        |
+| User  | Scaled Balance | Index | Actual Balance |
+|-------|---------------|-------|----------------|
+| Alice | 1,000.00 | 1.000000 | 1,000.00 |
 
-### T=1 (some time later): Index grows
+### T=1: Time Passes, Borrowers Pay Interest
 
-Borrowers have been paying interest. The liquidity index has grown to `1.05`.
-
-```
-liquidityIndex = 1.050000
-```
-
-No one has interacted, but if we query balances:
-
-| User  | Scaled Balance | Actual Balance         |
-|-------|---------------|------------------------|
-| Alice | 1000.00       | 1000.00 * 1.05 = 1050.00 |
-
-Alice has earned 50 USDC.
-
-### T=1: Bob Supplies 2000 USDC
-
-Bob deposits while the index is `1.05`:
+Various users have been borrowing USDC and paying interest. The liquidity index has grown to 1.050000. Alice has not interacted with the protocol at all. Her stored scaled balance is still exactly 1,000.00. But if anyone calls `balanceOf(Alice)`:
 
 ```
-scaledBalance(Bob) = 2000 / 1.05 = 1904.76
+actualBalance = 1000.00 * 1.050000 = 1,050.00
 ```
 
-| User  | Scaled Balance | Actual Balance         |
-|-------|---------------|------------------------|
-| Alice | 1000.00       | 1000.00 * 1.05 = 1050.00 |
-| Bob   | 1904.76       | 1904.76 * 1.05 = 2000.00 |
+| User  | Scaled Balance | Index | Actual Balance |
+|-------|---------------|-------|----------------|
+| Alice | 1,000.00 | 1.050000 | 1,050.00 |
 
-The scaled total supply is `2904.76`. The actual total supply is `3050.00`.
+Alice earned $50 in interest without a single transaction. No one updated her balance. No one ran a batch job. The protocol simply updated the index (one storage write), and Alice's balance grew automatically.
 
-### T=2 (more time passes): Index grows to 1.10
+### T=1: Bob Deposits 2,000 USDC
+
+Bob deposits while the index is 1.050000:
 
 ```
-liquidityIndex = 1.100000
+Bob's scaledBalance = 2000 / 1.050000 = 1,904.76
 ```
 
-| User  | Scaled Balance | Actual Balance            |
-|-------|---------------|---------------------------|
-| Alice | 1000.00       | 1000.00 * 1.10 = 1100.00  |
-| Bob   | 1904.76       | 1904.76 * 1.10 = 2095.24  |
+| User  | Scaled Balance | Index | Actual Balance |
+|-------|---------------|-------|----------------|
+| Alice | 1,000.00 | 1.050000 | 1,050.00 |
+| Bob | 1,904.76 | 1.050000 | 2,000.00 |
 
-Alice's total interest earned: 100 USDC (10% on her original 1000).
-Bob's total interest earned: 95.24 USDC (about 4.76% on his original 2000, reflecting his later entry).
+Notice that Bob's scaled balance (1,904.76) is less than his deposit (2,000). This is correct --- Bob is "entering" at a higher index, so his scaled balance reflects what his deposit is worth in "original dollars." When multiplied by the current index, it gives back exactly 2,000.
 
-Total actual supply: `3195.24`.
+### T=2: More Time Passes, Index Reaches 1.100000
+
+| User  | Scaled Balance | Index | Actual Balance |
+|-------|---------------|-------|----------------|
+| Alice | 1,000.00 | 1.100000 | 1,100.00 |
+| Bob | 1,904.76 | 1.100000 | 2,095.24 |
+
+**Alice** has earned $100 total (10% on her original $1,000), reflecting the full period since she deposited.
+
+**Bob** has earned $95.24 (about 4.76% on his original $2,000), reflecting only the period since *he* deposited. The index went from 1.05 to 1.10 during Bob's time in the pool, a 4.76% increase.
+
+The system perfectly tracks different entry times using a single global index. No per-user timestamp, no per-user rate tracking.
 
 ### T=2: Alice Withdraws 500 USDC
 
 When Alice withdraws, the protocol burns the equivalent scaled amount:
 
 ```
-scaledAmountToBurn = 500 / 1.10 = 454.55
+scaledAmountToBurn = 500 / 1.100000 = 454.55
+Alice's new scaledBalance = 1000.00 - 454.55 = 545.45
 ```
 
-Alice's new scaled balance:
+Alice receives 500 USDC in her wallet. Her remaining position:
 
 ```
-1000.00 - 454.55 = 545.45
+actualBalance = 545.45 * 1.100000 = 600.00 USDC
 ```
 
-Alice's actual remaining balance:
+This makes sense: Alice had 1,100.00 USDC in the protocol, withdrew 500.00, and has 600.00 remaining.
+
+### T=3: Index Reaches 1.150000
+
+| User  | Scaled Balance | Index | Actual Balance |
+|-------|---------------|-------|----------------|
+| Alice | 545.45 | 1.150000 | 627.27 |
+| Bob | 1,904.76 | 1.150000 | 2,190.48 |
+
+Alice's remaining 600 USDC has grown to 627.27 (earning the same rate as everyone else). Bob's position has grown to 2,190.48.
+
+The system handles deposits, withdrawals, and different entry times seamlessly, all through one global index.
+
+---
+
+## Why This Design Is Elegant
+
+The power of the index-and-scaled-balance pattern comes down to a single property: **you only update one number (the index) to effectively update every user's balance simultaneously.**
+
+This gives you:
+
+**O(1) state updates.** Updating the index is one storage write, whether there are 10 users or 10 million. The cost is identical.
+
+**O(1) balance queries.** Computing any user's balance is one multiplication: `scaledBalance * index`. No iteration, no historical lookups, no aggregation.
+
+**No "stale balance" problem.** Even if a user disappears for a year, their balance is always correct when queried. The index has been growing with every interaction by *any* user in that market, and the multiplication picks up all that accrued interest.
+
+**Perfect composability.** Because `balanceOf()` returns the up-to-date actual balance, aTokens compose with any DeFi protocol that reads ERC-20 balances. Yield aggregators, dashboards, and wallets all see the correct number without special integration.
+
+**Correctness under concurrent deposits.** Multiple users depositing at different times and amounts are all handled correctly. Each user's scaled balance captures their entry point, and the ratio between indexes handles everything else.
+
+---
+
+## How Indexes Get Updated
+
+The liquidity index and variable borrow index are updated inside `ReserveLogic.updateState()`, which is called at the start of virtually every user-facing operation: `supply()`, `withdraw()`, `borrow()`, `repay()`, `liquidationCall()`, `flashLoan()`, and more. This ensures accounting is current before any state change occurs.
+
+The update logic works as follows:
+
+1. **Check if an update is needed.** If the last update was in the current block, skip (nothing has changed).
+2. **Compute time elapsed** since the last update.
+3. **Update the liquidity index** using simple (linear) interest: `newIndex = oldIndex * (1 + supplyRate * timeElapsed / secondsPerYear)`.
+4. **Update the variable borrow index** using compound interest (a Taylor expansion approximation): effectively `newIndex = oldIndex * (1 + borrowRate / secondsPerYear) ^ timeElapsed`.
+5. **Accrue treasury revenue** --- compute how much total borrower interest accrued and take the reserve factor's cut.
+6. **Write the new indexes and timestamp** to storage.
+
+### Why Linear for Supply, Compound for Borrow?
+
+The supply side uses linear (simple) interest for each update interval because the approximation error is negligible over typical intervals (seconds to hours). The borrow side uses compound interest because borrow rates are higher and debt tracking must be precise to maintain protocol solvency.
+
+The small difference between compound borrow interest and linear supply interest generates a tiny surplus that benefits the protocol. In practice, this is barely noticeable --- updates happen frequently enough that linear and compound interest converge.
+
+The compound interest calculation uses a third-order Taylor expansion of `(1 + r/n)^n`, implemented in `MathUtils.calculateCompoundedInterest()`. The first three terms of the expansion give very accurate results for typical rate values and time intervals.
+
+### Treasury Accrual
+
+After updating the indexes, the `_accrueToTreasury()` function computes how much borrower interest accrued since the last update and takes the reserve factor's percentage. This amount is added to the reserve's `accruedToTreasury` field, stored in scaled units (consistent with how all balances work in the system). Governance can later claim these funds.
+
+---
+
+## How "Interest Accrues" Without Any Transaction
+
+A common source of confusion: if indexes are only updated when someone interacts with the protocol, how does interest "accrue" between transactions?
+
+The answer is that interest accrues *mathematically* but not *in storage*. Between transactions, the stored index is stale. But any code that reads a balance (including `balanceOf()`) first computes what the index *would be* right now based on the stored rate and elapsed time, then multiplies by the scaled balance.
+
+Here is the conceptual sequence when you call `aToken.balanceOf(user)`:
+
+1. Read the stored `liquidityIndex` and `lastUpdateTimestamp` from `ReserveData`.
+2. Read the stored `currentLiquidityRate`.
+3. Compute the "live" index: `liveIndex = storedIndex * (1 + rate * (now - lastUpdate) / secondsPerYear)`.
+4. Return `scaledBalance * liveIndex`.
+
+This means the returned balance is always up-to-date, even if no one has touched the reserve in hours. The stored index catches up the next time someone does interact.
+
+This is also why aToken balances appear to change continuously in wallet UIs that poll `balanceOf()` --- each call returns a slightly larger number as time passes.
+
+---
+
+## The Same Pattern for Debt
+
+Everything described above applies symmetrically to debt. When you borrow:
 
 ```
-545.45 * 1.10 = 600.00 USDC
+scaledDebt = borrowAmount / currentVariableBorrowIndex
 ```
 
-Alice receives 500 USDC transferred to her wallet. She still has 600 USDC earning interest in the protocol.
+When you (or anyone) queries your debt:
 
-### T=3: Index grows to 1.15
+```
+actualDebt = scaledDebt * currentVariableBorrowIndex
+```
 
-| User  | Scaled Balance | Actual Balance            |
-|-------|---------------|---------------------------|
-| Alice | 545.45        | 545.45 * 1.15 = 627.27    |
-| Bob   | 1904.76       | 1904.76 * 1.15 = 2190.48  |
+Your debt grows over time as the borrow index increases, just as supply balances grow as the liquidity index increases. The borrow index simply grows faster (higher rates), so debt accumulates more quickly than supply interest.
 
-The system continues to work perfectly. Alice's remaining balance grows at the same rate as everyone else's, and the only values that ever change in storage are the reserve's index and timestamp.
+When you repay, the protocol burns the corresponding scaled debt amount. Partial repayments work exactly like partial withdrawals in the supply example above.
+
+---
+
+## Putting It All Together: The Supply Flow
+
+Here is the complete sequence when someone calls `Pool.supply(USDC, 1000)`:
+
+1. **Update state.** Call `reserve.updateState()`, which updates the liquidity index and variable borrow index based on elapsed time and current rates, and accrues treasury revenue.
+2. **Transfer tokens.** Move 1,000 USDC from the user to the aToken contract.
+3. **Mint scaled aTokens.** Calculate `scaledAmount = 1000 / newLiquidityIndex` and mint that many scaled aTokens to the user.
+4. **Recalculate rates.** With more liquidity in the pool, utilization has dropped. Recalculate and store the new supply and borrow rates.
+
+Every operation follows the same pattern: **update state first, then act.** This ensures that all interest accrual is accounted for before any balances change, preventing users from gaming the timing of their transactions.
 
 ---
 
 ## Summary
 
-The index-and-scaled-balance pattern is the foundation of Aave V3's accounting system. Every other mechanism in the protocol --- aTokens, debt tokens, treasury accruals, liquidation calculations --- builds on this primitive.
+The index-and-scaled-balance pattern is the accounting foundation of Aave V3. Every other mechanism --- aTokens, debt tokens, treasury accruals, liquidation calculations --- builds on it.
 
 **Key takeaways:**
 
-- The **liquidity index** is a cumulative multiplier that tracks supply-side interest. It is updated via linear interest on every reserve interaction.
-- The **variable borrow index** is the borrower equivalent, updated via compound interest (Taylor expansion approximation).
-- **Scaled balances** are user balances divided by the index at the time of deposit/borrow. They are the only values stored in contract state.
-- **Actual balances** are computed on the fly: `scaledBalance * currentIndex`.
-- **`updateState()`** is called at the start of every operation. It updates both indexes and accrues treasury revenue.
-- This design achieves O(1) cost for interest accrual regardless of the number of users.
+- The **liquidity index** is a cumulative multiplier that tracks total supply-side interest since inception. One number, shared by all suppliers of that asset.
+- The **variable borrow index** is the same concept for debt, growing faster because borrow rates exceed supply rates.
+- **Scaled balances** are user balances divided by the index at deposit/borrow time. This is the *only* per-user value stored on-chain.
+- **Actual balances** are computed on the fly: `scaledBalance * currentIndex`. This always reflects up-to-date interest, even between transactions.
+- **`updateState()`** is called at the start of every operation to bring indexes current and accrue treasury revenue.
+- This design achieves **O(1) cost** for interest accrual regardless of whether the protocol has 10 users or 10 million.
+
+The elegance is in what the protocol *does not* do: it does not loop, it does not batch, it does not schedule. It stores one number per asset that grows over time, and derives everything else from that number on demand.
 
 In the next chapter, we will see how aTokens wrap this scaled balance system into an ERC-20 interface that makes interest-bearing deposits feel like holding a normal token.

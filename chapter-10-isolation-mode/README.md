@@ -1,611 +1,262 @@
 # Chapter 10: Isolation Mode
 
-Not all assets are created equal. ETH and USDC are battle-tested, deeply liquid, and well-understood. But DeFi moves fast, and there is constant demand to list new assets on Aave --- governance tokens, liquid staking derivatives, real-world asset tokens. These assets bring liquidity and users, but they also bring risk. A newly listed token with thin liquidity could crash 50% in minutes, leaving the protocol with bad debt if it was used as collateral for large borrows.
+DeFi moves fast. Every week, new tokens launch --- governance tokens, liquid staking derivatives, real-world asset tokens, memecoins-turned-infrastructure. Users want to use these tokens as collateral on Aave. More listed assets mean more users, more liquidity, and more revenue.
 
-Aave V3 solves this with **Isolation Mode**. It allows governance to list riskier assets as collateral, but with strict guardrails: a cap on total debt, restrictions on what can be borrowed, and a prohibition on mixing the isolated collateral with other assets. This lets Aave expand its asset coverage without exposing the protocol to unbounded risk from any single new listing.
+But new tokens are risky. A freshly launched governance token might have $5M of liquidity on DEXes today and $500K tomorrow. Its price could crash 80% in an hour. If Aave allows unlimited borrowing against such a token, and the token collapses, the protocol could end up with millions in bad debt --- losses that fall on every lender in the pool.
 
----
-
-## 1. What Isolation Mode Is
-
-Isolation Mode is a set of restrictions applied to specific collateral assets that governance has marked as "isolated." When a user supplies an isolated asset and uses it as their only collateral, they enter Isolation Mode automatically. The restrictions are:
-
-1. **Debt ceiling**: There is a maximum total debt (in USD) that can be backed by this isolated collateral across all users. Once the ceiling is reached, no one else can borrow against it.
-
-2. **Restricted borrowing**: The user can only borrow assets that governance has flagged as "borrowable in isolation" --- typically safe, liquid stablecoins like USDC, DAI, and USDT.
-
-3. **No additional collateral**: The user cannot enable other supplied assets as collateral alongside the isolated asset. The isolated asset must be their sole collateral.
-
-These restrictions contain the blast radius if something goes wrong with the isolated asset. Even in a worst-case scenario where the isolated asset goes to zero, the protocol's losses are bounded by the debt ceiling.
+The traditional answer was simple: do not list risky assets. But that limits growth. Aave V3 introduces a better answer: **Isolation Mode**. List the asset, but with strict guardrails that cap the protocol's maximum exposure.
 
 ---
 
-## 2. How Isolation Mode Works
+## 1. The Risk Problem
 
-### The Lifecycle
+Not all collateral is created equal. Consider two assets:
 
-Here is the typical user flow:
+| Property | WETH | NEW_TOKEN |
+|----------|------|-----------|
+| Market cap | $300B+ | $50M |
+| Daily DEX volume | $2B+ | $3M |
+| Price history | 8+ years | 3 months |
+| Oracle reliability | Battle-tested Chainlink feed | Newer feed, less validation |
+| Worst daily drop | ~20% | Unknown |
 
-1. Governance lists Token X as isolated collateral with a $10M debt ceiling
-2. User supplies Token X to Aave (receiving aToken X)
-3. User enables Token X as collateral
-4. Since Token X is their only collateral and it is an isolated asset, they are now in Isolation Mode
-5. User can borrow USDC or DAI (assets flagged as borrowable in isolation)
-6. User cannot borrow WETH, WBTC, or any asset not marked as borrowable in isolation
-7. User cannot enable ETH, WBTC, or any other asset as additional collateral
+Lending against WETH is well-understood. The risk parameters (80% LTV, 5% liquidation bonus) are calibrated against years of volatility data and deep liquidation markets. Bots can liquidate WETH positions quickly because there is ample liquidity to buy or sell.
 
-### How the Protocol Detects Isolation Mode
+Lending against NEW_TOKEN is a different story. If its price drops 50% in minutes, liquidators may not be able to sell the seized collateral fast enough. The liquidation bonus might not cover the slippage. And if many users have borrowed against NEW_TOKEN, the total bad debt could be substantial.
 
-There is no explicit "enter isolation mode" function. The protocol determines if a user is in Isolation Mode by examining their collateral configuration at the time of borrowing. The check happens in `ValidationLogic.validateBorrow()`:
-
-```solidity
-// Simplified from ValidationLogic.sol
-(
-    bool isolationModeActive,
-    address isolationModeCollateralAddress,
-    uint256 isolationModeDebtCeiling
-) = userConfig.getIsolationModeState(reservesData, reservesList);
-```
-
-The `getIsolationModeState()` function works as follows:
-
-```solidity
-function getIsolationModeState(
-    DataTypes.UserConfigurationMap memory self,
-    mapping(address => DataTypes.ReserveData) storage reservesData,
-    mapping(uint256 => address) storage reservesList
-) internal view returns (
-    bool,    // isIsolated
-    address, // isolationModeCollateralAddress
-    uint256  // isolationModeDebtCeiling
-) {
-    uint256 firstAssetAsCollateral = self.getFirstAssetIdByMask(
-        self._data & COLLATERAL_MASK  // bitmask for collateral bits
-    );
-
-    // Check: user has exactly one collateral asset
-    // AND that collateral asset has a non-zero debt ceiling (i.e., is isolated)
-    uint256 debtCeiling = reservesData[reservesList[firstAssetAsCollateral]]
-        .configuration
-        .getDebtCeiling();
-
-    if (debtCeiling != 0) {
-        // User is in isolation mode
-        return (true, reservesList[firstAssetAsCollateral], debtCeiling);
-    }
-
-    return (false, address(0), 0);
-}
-```
-
-The logic is:
-1. Find the user's first (and only) collateral asset
-2. Check if that asset has a debt ceiling configured
-3. If yes, the user is in Isolation Mode
-
-An asset has a debt ceiling of 0 by default, meaning it is not isolated. Governance sets a non-zero debt ceiling to make an asset isolated.
+**Isolation Mode bounds this risk.** It says: "Yes, list the asset. Let people borrow against it. But cap the total damage."
 
 ---
 
-## 3. Debt Ceiling
+## 2. The Three Guardrails
 
-The debt ceiling is the most important safety mechanism in Isolation Mode. It caps the total USD value of debt that can be backed by a given isolated collateral asset, across all users.
+Isolation Mode imposes three restrictions on an isolated asset:
 
-### How It Is Stored
+### Guardrail 1: Debt Ceiling
 
-The debt ceiling is stored in the reserve configuration bitmap:
+The most important safeguard. The **debt ceiling** is a hard cap on the total USD value of debt that can be backed by this isolated collateral, across all users combined.
 
-```solidity
-// From ReserveConfiguration.sol
-uint256 internal constant DEBT_CEILING_MASK =
-    0xF0000000000FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF;
-uint256 internal constant DEBT_CEILING_START_BIT_POSITION = 212;
-uint256 internal constant DEBT_CEILING_DECIMALS = 2;
+If NEW_TOKEN has a $5M debt ceiling, then no matter how many users supply it as collateral, the total borrowing against it cannot exceed $5M. Even if NEW_TOKEN goes to zero and every position becomes insolvent, the protocol's maximum loss is $5M (minus whatever liquidators recover).
 
-function getDebtCeiling(
-    DataTypes.ReserveConfigurationMap memory self
-) internal pure returns (uint256) {
-    return (self.data & ~DEBT_CEILING_MASK) >> DEBT_CEILING_START_BIT_POSITION;
-}
-```
+This is a **global** limit, not per-user. Why? Because the protocol's risk is aggregate. Whether one user borrows $5M or 5,000 users each borrow $1,000, the protocol's exposure is the same $5M if the collateral collapses.
 
-The ceiling is denominated in the protocol's base currency (USD on mainnet) with **2 decimals of precision**. A stored value of 1000000 means a $10,000.00 ceiling. A value of 1000000000 means $10,000,000.00.
+| Debt Ceiling | What It Means |
+|--------------|---------------|
+| $1M | Extremely cautious listing --- testing the waters |
+| $5M | Moderate confidence, growing track record |
+| $50M | High confidence, but still wants a cap |
+| $0 | Not isolated (normal asset, no ceiling) |
 
-### Tracking Current Debt
+The ceiling is denominated in the protocol's base currency (USD on mainnet) with 2 decimals of precision. It is tracked by a global counter (`isolationModeTotalDebt`) that increments on every borrow and decrements on every repay or liquidation.
 
-The actual amount of debt currently backed by an isolated collateral is tracked in the reserve data:
+### Guardrail 2: Restricted Borrowing
 
-```solidity
-// From DataTypes.sol
-struct ReserveData {
-    // ... other fields ...
-    uint128 isolationModeTotalDebt;
-    // ... other fields ...
-}
-```
+A user in Isolation Mode can only borrow assets that governance has explicitly flagged as "borrowable in isolation." In practice, this means **stablecoins**: USDC, DAI, USDT.
 
-This counter is updated whenever a user in Isolation Mode borrows or repays:
+Why stablecoins? Because they keep the debt side of the equation predictable. If a user borrows WETH against isolated collateral and ETH doubles, the debt value doubles too --- making the health factor calculation more complex and the debt ceiling less meaningful in dollar terms. Stablecoins maintain a consistent dollar value, which means the debt ceiling directly translates to a maximum dollar exposure.
 
-**On borrow** (in `BorrowLogic.executeBorrow()`):
+| Borrowable in Isolation? | Asset | Rationale |
+|--------------------------|-------|-----------|
+| Yes | USDC, DAI, USDT | Stable value, predictable debt |
+| No | WETH, WBTC | Volatile --- would make debt ceiling unreliable |
+| Sometimes | FRAX, other stables | Governance decides case by case |
 
-```solidity
-if (isolationModeActive) {
-    uint256 nextIsolationModeTotalDebt =
-        reservesData[isolationModeCollateralAddress].isolationModeTotalDebt
-        + (params.amount / 10 ** (reserveDecimals - DEBT_CEILING_DECIMALS)).toUint128();
+### Guardrail 3: No Additional Collateral
 
-    reservesData[isolationModeCollateralAddress].isolationModeTotalDebt =
-        nextIsolationModeTotalDebt.toUint128();
-}
-```
+A user in Isolation Mode cannot enable other assets as collateral alongside the isolated asset. The isolated asset must be their **sole collateral**.
 
-The amount is scaled to match the debt ceiling's 2-decimal precision. If a user borrows 5000.123456 USDC (6 decimals), the isolation mode debt increases by 5000.12 (2 decimals).
+This prevents a scenario where a user mixes isolated and non-isolated collateral, making it difficult to attribute risk. If a user has both WETH and NEW_TOKEN as collateral, how much of their borrow is "backed by" the risky token? The answer is ambiguous, and the debt ceiling becomes harder to enforce meaningfully.
 
-**On repay** (in `BorrowLogic.executeRepay()`):
-
-```solidity
-if (isolationModeActive) {
-    uint128 isolationModeTotalDebt =
-        reservesData[isolationModeCollateralAddress].isolationModeTotalDebt;
-
-    uint128 debtRepaid = (params.amount / 10 ** (reserveDecimals - DEBT_CEILING_DECIMALS))
-        .toUint128();
-
-    reservesData[isolationModeCollateralAddress].isolationModeTotalDebt =
-        isolationModeTotalDebt > debtRepaid
-            ? isolationModeTotalDebt - debtRepaid
-            : 0;
-}
-```
-
-### Validation at Borrow Time
-
-The debt ceiling is checked in `ValidationLogic.validateBorrow()`:
-
-```solidity
-if (isolationModeActive) {
-    // 1. Check that the borrowed asset is flagged as borrowable in isolation
-    require(
-        reserveConfig.getBorrowableInIsolation(),
-        Errors.ASSET_NOT_BORROWABLE_IN_ISOLATION
-    );
-
-    // 2. Check that the debt ceiling is not exceeded
-    require(
-        reservesData[isolationModeCollateralAddress].isolationModeTotalDebt
-            + (params.amount / 10 ** (params.reserveDecimals - DEBT_CEILING_DECIMALS))
-            <= isolationModeDebtCeiling,
-        Errors.DEBT_CEILING_EXCEEDED
-    );
-}
-```
-
-Two checks happen:
-1. The asset being borrowed must be flagged as borrowable in isolation
-2. Adding this borrow must not push the total isolation mode debt above the ceiling
-
-If either check fails, the borrow reverts.
-
-### Why a Global Ceiling Instead of Per-User
-
-The debt ceiling is **global** --- it limits the total debt across all users using this isolated collateral. This is deliberate. If 100 users each borrow $100K against isolated Token X, the protocol's total exposure is $10M. If Token X collapses, the protocol could face up to $10M in bad debt (minus whatever liquidators recover). The debt ceiling caps this worst-case scenario.
-
-A per-user limit would not achieve the same safety guarantee. 10,000 users each borrowing $1K would create the same $10M exposure.
+By requiring sole collateral, the relationship is clear: this user's entire position depends on the isolated asset, and their borrow counts fully against the debt ceiling.
 
 ---
 
-## 4. Entering and Exiting Isolation Mode
+## 3. How Isolation Mode Is Triggered
 
-### Entering Isolation Mode
+There is no "enter isolation mode" button. The protocol detects Isolation Mode dynamically based on the user's collateral configuration:
 
-There is no explicit "enter" function. Isolation Mode is a consequence of the user's collateral configuration:
+1. The user supplies an asset that has a non-zero debt ceiling (meaning governance has marked it as isolated)
+2. The user enables that asset as their collateral
+3. That asset is their **only** enabled collateral
+4. Result: the user is in Isolation Mode
 
-1. User supplies an isolated asset (e.g., Token X with a debt ceiling)
-2. User calls `Pool.setUserUseReserveAsCollateral(tokenX, true)`
-3. If Token X is their **only** enabled collateral, they are now in Isolation Mode
-4. The next time they borrow, the isolation mode checks apply
+The detection happens at borrow time. The protocol looks at the user's collateral, finds the first (and only) collateral asset, checks if it has a debt ceiling, and if so, applies the isolation restrictions.
 
-The detection happens dynamically at borrow time via `getIsolationModeState()`.
+Two-way enforcement prevents mixing:
+- If you already have an isolated collateral, you cannot enable additional collateral
+- If you already have non-isolated collateral, you cannot enable an isolated asset
 
-### The Collateral Restriction
-
-Once a user has an isolated asset as collateral, they cannot enable additional collateral. This is enforced in `ValidationLogic.validateSupply()` and the collateral-enabling logic:
-
-```solidity
-// When the user tries to enable an asset as collateral, the protocol checks:
-// If the user already has an isolated collateral enabled,
-// they cannot enable a second collateral asset.
-
-// And vice versa: if the user has non-isolated collateral enabled,
-// they cannot enable an isolated asset as additional collateral.
-```
-
-More specifically, in `SupplyLogic.executeSupply()`, after minting aTokens, the function checks whether to automatically enable the asset as collateral. If the user is already in Isolation Mode (has an isolated asset as collateral), additional assets are not auto-enabled as collateral.
-
-The validation in `validateUseAsCollateral()` ensures:
-
-```solidity
-// From ValidationLogic.sol
-function validateSetUserUseReserveAsCollateral(
-    mapping(address => DataTypes.ReserveData) storage reservesData,
-    mapping(uint256 => address) storage reservesList,
-    DataTypes.UserConfigurationMap memory userConfig,
-    DataTypes.ReserveConfigurationMap memory reserveConfig
-) internal view {
-    // ... basic checks ...
-
-    // If the user already has any collateral enabled:
-    //   - Cannot enable an isolated asset (would create mixed isolation)
-    //   - If the existing collateral is isolated, cannot enable another asset
-
-    bool hasOtherCollateral = userConfig.isUsingAsCollateralAny();
-
-    if (hasOtherCollateral) {
-        // Check: the user's existing collateral is not isolated
-        (bool isolationModeActive, , ) = userConfig.getIsolationModeState(
-            reservesData,
-            reservesList
-        );
-        require(!isolationModeActive, Errors.USER_IN_ISOLATION_MODE);
-    }
-
-    // If the asset being enabled is isolated, user must not have other collateral
-    if (reserveConfig.getDebtCeiling() != 0) {
-        require(!hasOtherCollateral, Errors.USER_IN_ISOLATION_MODE);
-    }
-}
-```
-
-This two-way check ensures:
-- A user in Isolation Mode cannot add more collateral
-- A user with existing non-isolated collateral cannot add an isolated asset
-
-### Exiting Isolation Mode
-
-To exit, the user disables the isolated asset as collateral:
-
-```solidity
-Pool.setUserUseReserveAsCollateral(tokenX, false);
-```
-
-This removes Token X from the collateral set. The user is no longer in Isolation Mode and can:
-- Enable other assets as collateral
-- Borrow any asset (not just isolation-borrowable ones)
-
-However, the user must not have outstanding debt that depends on the isolated collateral. If disabling the collateral would drop the health factor below 1, the transaction reverts.
-
-Alternatively, the user can supply and enable a non-isolated asset as collateral and then disable the isolated one --- effectively swapping their collateral base.
+To exit, disable the isolated collateral (requires no outstanding debt that depends on it) or swap your collateral base by supplying and enabling a non-isolated asset first.
 
 ---
 
-## 5. Borrowable in Isolation
+## 4. A Complete Example
 
-Not every asset can be borrowed in Isolation Mode. Governance explicitly flags which assets are safe to borrow against isolated collateral. This is stored as a boolean in the reserve configuration:
+Let us trace through a realistic scenario.
 
-```solidity
-// From ReserveConfiguration.sol
-uint256 internal constant BORROWABLE_IN_ISOLATION_MASK =
-    0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFDFFFFFFFFFFFFFFF;
-uint256 internal constant BORROWABLE_IN_ISOLATION_START_BIT_POSITION = 61;
+### Governance Lists NEW_TOKEN
 
-function getBorrowableInIsolation(
-    DataTypes.ReserveConfigurationMap memory self
-) internal pure returns (bool) {
-    return (self.data & ~BORROWABLE_IN_ISOLATION_MASK) != 0;
-}
-```
-
-Typically, only well-established stablecoins are marked as borrowable in isolation:
-- USDC
-- DAI
-- USDT
-- Sometimes FRAX or other widely-used stablecoins
-
-The rationale: if a user borrows a volatile asset (like WETH) against isolated collateral, and the collateral drops in value, the debt could exceed the collateral before liquidators act. Stablecoins are predictable in value, making the debt side of the equation more stable and easier for the protocol to manage.
-
-Governance sets this flag via `PoolConfigurator.setBorrowableInIsolation(asset, true)`.
-
----
-
-## 6. Practical Example
-
-Let us walk through a complete example. Suppose governance has just listed a new token --- let us call it NEW --- on Aave V3.
-
-### Governance Configuration
+Governance decides to list a new DeFi governance token. The configuration:
 
 | Parameter | Value |
 |-----------|-------|
-| Asset | NEW |
-| Can be supplied | Yes |
-| Can be collateral | Yes (isolated) |
-| Debt ceiling | $5,000,000 (stored as 500000000 with 2 decimals) |
+| Asset | NEW_TOKEN |
+| Price | $10 |
+| Isolated | Yes |
+| Debt ceiling | $5,000,000 |
 | LTV | 50% |
 | Liquidation threshold | 55% |
 | Liquidation bonus | 10% |
 
-Assets marked as borrowable in isolation: USDC, DAI, USDT.
+Assets borrowable in isolation: USDC, DAI, USDT.
 
-### User Actions
+The conservative parameters reflect the asset's risk: 50% LTV (vs. 80% for ETH), 10% liquidation bonus (vs. 5% for ETH), and a $5M debt ceiling.
 
-**Step 1: Supply NEW**
+### Alice Borrows Against NEW_TOKEN
 
-Alice holds 100,000 NEW tokens, currently worth $10 each ($1,000,000 total). She calls:
+Alice holds 100,000 NEW_TOKEN ($1,000,000 at $10 each).
 
-```solidity
-Pool.supply(NEW, 100000e18, alice, 0);
-```
+**Step 1:** She supplies NEW_TOKEN to Aave and enables it as collateral. Since it has a debt ceiling and is her only collateral, she is now in Isolation Mode.
 
-Alice receives aNEW tokens. She is not yet in Isolation Mode --- she has not enabled NEW as collateral.
-
-**Step 2: Enable as Collateral**
-
-```solidity
-Pool.setUserUseReserveAsCollateral(NEW, true);
-```
-
-Now Alice is in Isolation Mode because:
-- NEW is her only collateral
-- NEW has a non-zero debt ceiling (it is an isolated asset)
-
-**Step 3: Borrow USDC**
-
-Alice wants to borrow USDC. She calls:
-
-```solidity
-Pool.borrow(USDC, 400000e6, 2, 0, alice); // Variable rate, 400K USDC
-```
+**Step 2:** She borrows $400,000 USDC.
 
 The protocol checks:
-1. Is Alice in Isolation Mode? Yes (only collateral is NEW, which has a debt ceiling).
+1. Is she in Isolation Mode? Yes.
 2. Is USDC borrowable in isolation? Yes.
-3. Does this borrow exceed the debt ceiling?
-   - Current `isolationModeTotalDebt` for NEW: let us say $3,200,000 (from other users)
-   - Alice's borrow: $400,000
-   - New total: $3,600,000
-   - Debt ceiling: $5,000,000
-   - $3,600,000 <= $5,000,000 --- ceiling not exceeded.
-4. Health factor check:
-   - Collateral: 100,000 NEW * $10 = $1,000,000
-   - LTV: 50%
-   - Max borrow: $500,000
-   - Actual borrow: $400,000
-   - Health factor: ($1,000,000 * 55%) / $400,000 = 1.375 --- healthy.
+3. Current debt against NEW_TOKEN across all users: $3,200,000. Adding $400,000 = $3,600,000. Ceiling is $5,000,000. Under the limit.
+4. Health factor: ($1,000,000 x 0.55) / $400,000 = **1.375**. Healthy.
 
-The borrow succeeds. Alice receives 400,000 USDC.
+The borrow succeeds. The `isolationModeTotalDebt` counter for NEW_TOKEN increases to $3,600,000.
 
-**Step 4: What Alice Cannot Do**
+**What Alice cannot do:**
 
-Alice tries to borrow WETH:
-```solidity
-Pool.borrow(WETH, 10e18, 2, 0, alice); // REVERTS: ASSET_NOT_BORROWABLE_IN_ISOLATION
+| Action | Result | Why |
+|--------|--------|-----|
+| Borrow WETH | Reverts | WETH is not borrowable in isolation |
+| Enable ETH as additional collateral | Reverts | Cannot mix collateral in Isolation Mode |
+| Borrow another $2M USDC | Reverts | Would push total debt to $5,600,000, exceeding the $5M ceiling |
+
+### The Debt Ceiling in Action
+
+Other users have also been borrowing against NEW_TOKEN. The debt counter reaches $5,000,000. Bob tries to borrow $100,000 USDC against his NEW_TOKEN collateral:
+
 ```
-WETH is not marked as borrowable in isolation.
-
-Alice tries to enable her ETH as collateral:
-```solidity
-Pool.setUserUseReserveAsCollateral(WETH, true); // REVERTS: USER_IN_ISOLATION_MODE
-```
-She cannot have additional collateral while in Isolation Mode.
-
-**Step 5: Debt Ceiling Reached**
-
-Later, other users have also borrowed against NEW. The total `isolationModeTotalDebt` for NEW reaches $5,000,000. Bob tries to borrow:
-
-```solidity
-Pool.borrow(USDC, 100000e6, 2, 0, bob); // REVERTS: DEBT_CEILING_EXCEEDED
+Current total: $5,000,000
+Bob's borrow:  $100,000
+New total:     $5,100,000 > $5,000,000 ceiling
+Result:        REVERTS (DEBT_CEILING_EXCEEDED)
 ```
 
-No more borrowing against NEW as collateral until some users repay. The protocol's maximum exposure to NEW-backed debt is capped at $5M.
+No more borrowing against NEW_TOKEN is possible until some users repay. The protocol's maximum exposure is capped.
 
-**Step 6: Exiting Isolation Mode**
+### The Worst-Case Scenario
 
-Alice repays her USDC debt:
-```solidity
-Pool.repay(USDC, 400000e6, 2, alice);
-```
+Imagine NEW_TOKEN crashes to $0. Every position backed by it becomes insolvent. Liquidators cannot sell the worthless collateral. The protocol absorbs up to $5M in bad debt.
 
-Now she can disable NEW as collateral:
-```solidity
-Pool.setUserUseReserveAsCollateral(NEW, false);
-```
+But $5M is the absolute worst case, by design. Without the debt ceiling, users could have borrowed $50M or $100M against NEW_TOKEN, and the loss would be catastrophic. The ceiling turns a potential existential crisis into a manageable loss that the Aave treasury and safety module can absorb.
 
-Alice is no longer in Isolation Mode. She can now enable other assets as collateral and borrow freely.
+### Alice Exits Isolation Mode
+
+Alice repays her $400,000 USDC debt. The `isolationModeTotalDebt` decreases by $400,000, freeing capacity for other users.
+
+She disables NEW_TOKEN as collateral. She is no longer in Isolation Mode and can now enable other assets as collateral and borrow any asset.
 
 ---
 
-## 7. Isolation Mode in the Code
+## 5. Isolation Mode + E-Mode
 
-Let us trace the complete code path for a borrow in Isolation Mode.
+A user can be in both Isolation Mode and E-Mode simultaneously. This is particularly relevant for new stablecoins.
 
-### Entry Point: `Pool.borrow()`
-
-```solidity
-function borrow(
-    address asset,
-    uint256 amount,
-    uint256 interestRateMode,
-    uint16 referralCode,
-    address onBehalfOf
-) external virtual override {
-    BorrowLogic.executeBorrow(
-        _reserves,
-        _reservesList,
-        _eModeCategories,
-        _usersConfig[onBehalfOf],
-        DataTypes.ExecuteBorrowParams({
-            asset: asset,
-            user: msg.sender,
-            onBehalfOf: onBehalfOf,
-            amount: amount,
-            interestRateMode: DataTypes.InterestRateMode(interestRateMode),
-            referralCode: referralCode,
-            releaseUnderlying: true,
-            reservesCount: _reservesCount,
-            oracle: IPoolAddressesProvider(_addressesProvider).getPriceOracle(),
-            userEModeCategory: _usersEModeCategory[onBehalfOf],
-            priceOracleSentinel: IPoolAddressesProvider(_addressesProvider).getPriceOracleSentinel()
-        })
-    );
-}
-```
-
-### `BorrowLogic.executeBorrow()`
-
-Inside `executeBorrow`, the isolation mode state is determined and passed to validation:
-
-```solidity
-function executeBorrow(
-    mapping(address => DataTypes.ReserveData) storage reservesData,
-    mapping(uint256 => address) storage reservesList,
-    mapping(uint8 => DataTypes.EModeCategory) storage eModeCategories,
-    DataTypes.UserConfigurationMap storage userConfig,
-    DataTypes.ExecuteBorrowParams memory params
-) public {
-    DataTypes.ReserveData storage reserve = reservesData[params.asset];
-    DataTypes.ReserveCache memory reserveCache = reserve.cache();
-    reserve.updateState(reserveCache);
-
-    // Determine isolation mode state
-    (
-        bool isolationModeActive,
-        address isolationModeCollateralAddress,
-        uint256 isolationModeDebtCeiling
-    ) = userConfig.getIsolationModeState(reservesData, reservesList);
-
-    // Validate the borrow
-    ValidationLogic.validateBorrow(
-        reservesData,
-        reservesList,
-        eModeCategories,
-        DataTypes.ValidateBorrowParams({
-            reserveCache: reserveCache,
-            userConfig: userConfig,
-            asset: params.asset,
-            amount: params.amount,
-            interestRateMode: params.interestRateMode,
-            // ...
-            isolationModeActive: isolationModeActive,
-            isolationModeCollateralAddress: isolationModeCollateralAddress,
-            isolationModeDebtCeiling: isolationModeDebtCeiling
-        })
-    );
-```
-
-### Validation: The Two Isolation Checks
-
-Inside `validateBorrow()`, the isolation checks are straightforward:
-
-```solidity
-if (params.isolationModeActive) {
-    // Check 1: asset must be borrowable in isolation
-    require(
-        params.reserveCache.reserveConfiguration.getBorrowableInIsolation(),
-        Errors.ASSET_NOT_BORROWABLE_IN_ISOLATION
-    );
-
-    // Check 2: debt ceiling must not be exceeded
-    require(
-        reservesData[params.isolationModeCollateralAddress].isolationModeTotalDebt
-            + (params.amount / 10 ** (params.reserveDecimals - ReserveConfiguration.DEBT_CEILING_DECIMALS))
-            .toUint128()
-            <= params.isolationModeDebtCeiling,
-        Errors.DEBT_CEILING_EXCEEDED
-    );
-}
-```
-
-### After Validation: Update Debt Counter
-
-Back in `executeBorrow()`, after validation passes and the debt tokens are minted:
-
-```solidity
-    // ... mint debt tokens, transfer underlying, update rates ...
-
-    // Update isolation mode total debt if applicable
-    if (isolationModeActive) {
-        uint256 nextIsolationModeTotalDebt =
-            reservesData[isolationModeCollateralAddress].isolationModeTotalDebt
-            + (params.amount / 10 ** (reserveDecimals - ReserveConfiguration.DEBT_CEILING_DECIMALS))
-            .toUint128();
-
-        reservesData[isolationModeCollateralAddress].isolationModeTotalDebt =
-            nextIsolationModeTotalDebt.toUint128();
-
-        emit IsolationModeTotalDebtUpdated(
-            isolationModeCollateralAddress,
-            nextIsolationModeTotalDebt
-        );
-    }
-}
-```
-
-### Repayment: Decrement the Counter
-
-In `BorrowLogic.executeRepay()`, the counter is decremented:
-
-```solidity
-if (isolationModeActive) {
-    uint128 isolationModeTotalDebt =
-        reservesData[isolationModeCollateralAddress].isolationModeTotalDebt;
-
-    uint128 isolationModeRepaymentAmount =
-        (actualPaybackAmount / 10 ** (reserveDecimals - ReserveConfiguration.DEBT_CEILING_DECIMALS))
-        .toUint128();
-
-    // Saturating subtraction to avoid underflow from rounding
-    reservesData[isolationModeCollateralAddress].isolationModeTotalDebt =
-        isolationModeTotalDebt > isolationModeRepaymentAmount
-            ? isolationModeTotalDebt - isolationModeRepaymentAmount
-            : 0;
-}
-```
-
-The saturating subtraction (using `> ? - : 0` instead of plain subtraction) handles edge cases where rounding could cause the repayment amount to slightly exceed the tracked debt.
-
-### Liquidation and Isolation Mode
-
-When a position in Isolation Mode is liquidated, the same debt counter is updated. In `LiquidationLogic.executeLiquidationCall()`, after the debt is repaid on behalf of the liquidated user:
-
-```solidity
-if (vars.userDebtInBaseCurrency == vars.actualDebtToLiquidate) {
-    // Full liquidation: the user's total debt is being repaid
-    // The isolation mode debt counter decreases by the full amount
-}
-
-// The isolation mode total debt is decremented by the liquidated amount
-// This frees up capacity under the debt ceiling for other users
-```
-
-This ensures the debt ceiling accurately reflects current outstanding debt and does not permanently consume capacity when positions are liquidated.
-
----
-
-## Isolation Mode and E-Mode Interaction
-
-A user can be in both Isolation Mode and E-Mode simultaneously. For example, if governance lists a new stablecoin (let us call it nUSD) as:
+Imagine governance lists a new stablecoin (nUSD) as:
 - Isolated with a $5M debt ceiling
 - E-Mode category 1 (Stablecoins)
 
-A user could supply nUSD, enter E-Mode for stablecoins, and borrow USDC with the E-Mode's boosted 93% LTV instead of nUSD's default LTV. However:
-- The debt ceiling still applies
-- Only isolation-borrowable assets can be borrowed
-- The E-Mode restriction (borrows must match the category) also applies
-- Both constraint sets must be satisfied simultaneously
+A user supplies nUSD, enters Stablecoin E-Mode, and borrows USDC. They get:
+- E-Mode's boosted 93% LTV (instead of nUSD's default, which might be 50%)
+- But the debt ceiling still applies
+- And only isolation-borrowable assets can be borrowed
+- Both constraint sets must be satisfied
+
+This combination lets Aave list a new stablecoin with high capital efficiency (via E-Mode) while still capping risk exposure (via the debt ceiling). It is the best of both worlds.
+
+---
+
+## 6. The Debt Ceiling Mechanics
+
+The debt ceiling counter is tracked per isolated asset in the reserve data as `isolationModeTotalDebt`. The counter uses **2 decimal precision** to match the debt ceiling's denomination.
+
+- **On borrow**: The counter increases by the borrowed amount (scaled to 2 decimals). A borrow of 5,000.123456 USDC increases the counter by 5,000.12.
+- **On repay**: The counter decreases by the repaid amount. A saturating subtraction prevents underflow from rounding differences.
+- **On liquidation**: The counter also decreases, freeing capacity under the ceiling for other users.
+
+This means the debt ceiling is a living limit. As users repay or get liquidated, capacity opens up for new borrowers. It is not a one-time allocation.
+
+---
+
+## 7. Liquidation in Isolation Mode
+
+Liquidation works the same as normal mode, but with two important economic effects:
+
+### Higher Liquidation Bonus = Faster Liquidator Response
+
+Isolated assets typically have a 10% liquidation bonus (vs. 5% for ETH). This is deliberate. Riskier, less liquid assets need a bigger incentive to attract liquidators. If the collateral is hard to sell, liquidators demand a larger discount to compensate for the risk of holding it. The higher bonus ensures positions get liquidated promptly even if the token is thinly traded.
+
+### Liquidation Frees Ceiling Capacity
+
+When a position is liquidated, the debt counter decreases. If Alice's $400,000 position is liquidated, $400,000 of ceiling capacity becomes available for other users. This is important: the debt ceiling does not permanently consume capacity. It is a measure of current outstanding exposure, not lifetime usage.
+
+| Event | Debt Counter | Available Under $5M Ceiling |
+|-------|-------------|----------------------------|
+| Initial state | $0 | $5,000,000 |
+| Alice borrows $400K | $400,000 | $4,600,000 |
+| Others borrow $4.6M | $5,000,000 | $0 (full) |
+| Alice is liquidated | $4,600,000 | $400,000 |
+| Others repay $1M | $3,600,000 | $1,400,000 |
+
+---
+
+## 8. The Governance Progression
+
+Isolation Mode is often a stepping stone. A new asset starts isolated, proves itself, and gradually gets promoted:
+
+**Stage 1: Isolated listing.** The asset is listed with a conservative debt ceiling ($1-5M), low LTV (40-50%), and high liquidation bonus (10%). This lets the market test the asset while capping risk.
+
+**Stage 2: Ceiling increases.** As the asset demonstrates stability and liquidity grows, governance raises the debt ceiling. A token that started at $5M might move to $20M, then $50M.
+
+**Stage 3: Full listing.** If the asset proves itself over months or years --- deep liquidity, reliable oracle, predictable volatility --- governance can remove the debt ceiling entirely (set it to 0). The asset becomes a normal collateral type with no isolation restrictions.
+
+**Stage 4: E-Mode eligibility.** Mature assets that are correlated with existing categories may be added to E-Mode groups, unlocking the highest capital efficiency.
+
+This progression lets Aave balance growth with safety. New assets bring users and TVL. Isolation Mode ensures that early-stage risk is contained. And the path to full listing gives governance a framework for gradually extending trust.
+
+### Setting the Right Ceiling
+
+How does governance choose a debt ceiling? Several factors:
+
+| Factor | Higher Ceiling | Lower Ceiling |
+|--------|---------------|---------------|
+| Market cap | Large ($500M+) | Small ($10-50M) |
+| DEX liquidity | Deep, multiple venues | Thin, concentrated |
+| Oracle quality | Battle-tested Chainlink feed | Newer, less validated |
+| Historical volatility | Moderate, well-understood | Extreme or unknown |
+| Protocol's safety module | Large treasury buffer | Limited reserves |
+
+The ceiling should be set so that even in a total collapse of the isolated asset, the resulting bad debt is absorbable by the Aave safety module and treasury. This is ultimately a judgment call by governance, informed by risk analysis.
 
 ---
 
 ## Key Takeaways
 
-1. **Isolation Mode restricts riskier collateral assets** by capping total debt, limiting borrowable assets, and preventing mixed collateral. This bounds the protocol's exposure to newly listed or volatile tokens.
+1. **Isolation Mode lets Aave list riskier assets** without unbounded risk. The debt ceiling caps the protocol's worst-case loss from any single isolated asset.
 
-2. **The debt ceiling is global** --- it limits total debt across all users, not per-user. This caps the protocol's worst-case loss if the isolated asset collapses.
+2. **Three guardrails work together**: debt ceiling (caps total exposure), restricted borrowing (stablecoins only, keeping debt predictable), and no mixed collateral (keeps risk attribution clean).
 
-3. **Entry is automatic.** If a user's only collateral is an isolated asset, they are in Isolation Mode. No explicit opt-in is needed.
+3. **Entry is automatic.** If your only collateral is an isolated asset, you are in Isolation Mode. No explicit opt-in.
 
-4. **Only stablecoins (and governance-approved assets) can be borrowed** in Isolation Mode. This keeps the debt side predictable and reduces the chance of cascading liquidations.
+4. **The debt ceiling is global, not per-user.** The protocol cares about aggregate exposure. Whether one user borrows $5M or 5,000 users each borrow $1,000, the risk is the same.
 
-5. **The isolation mode total debt counter** in `reserveData.isolationModeTotalDebt` is incremented on borrow and decremented on repay/liquidation. It uses 2 decimal precision to match the debt ceiling's denomination.
+5. **Only stablecoins can be borrowed** in Isolation Mode. This keeps the debt side predictable and makes the debt ceiling meaningful in dollar terms.
 
-6. **Exiting requires disabling the isolated collateral**, which is only possible if the user's health factor remains >= 1 without it.
+6. **Isolation Mode and E-Mode can coexist**, allowing new stablecoins to get high capital efficiency while still being risk-bounded by the ceiling.
 
-7. **Isolation Mode and E-Mode can coexist**, with both sets of constraints applying simultaneously. This allows new stablecoins to benefit from E-Mode capital efficiency while still being risk-bounded by the debt ceiling.
+7. **The debt ceiling is dynamic.** Repayments and liquidations free up capacity. It is a living limit, not a one-time cap.

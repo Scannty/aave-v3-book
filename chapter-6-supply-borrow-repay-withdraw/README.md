@@ -1,885 +1,370 @@
-# Chapter 6: Supply, Borrow, Repay, and Withdraw Flows
+# Chapter 6: Supply, Borrow, Repay, and Withdraw --- The Four Core Operations
 
-The previous five chapters introduced the building blocks: the architecture and delegation pattern (Chapter 1), the interest rate model (Chapter 2), indexes and scaled balances (Chapter 3), aTokens (Chapter 4), and debt tokens (Chapter 5). This chapter ties them all together by walking through each core operation from the moment a user calls the Pool contract to the final state change.
+The previous chapters introduced the building blocks: interest rate models (Chapter 2), indexes and scaled balances (Chapter 3), aTokens (Chapter 4), and debt tokens (Chapter 5). This chapter ties them together by walking through the lifecycle of a lending position --- from supplying assets to earning interest to borrowing, repaying, and withdrawing.
 
-Every operation in Aave V3 follows the same high-level pattern:
+Every operation in Aave V3 follows the same rhythm:
 
-```
-1. Validate inputs
-2. Update state (indexes, treasury accrual)
-3. Execute the operation (mint/burn tokens, transfer assets)
-4. Update interest rates (since utilization changed)
-5. Emit events
-```
+1. Settle all pending interest (bring indexes up to date)
+2. Validate the action (can this user do this?)
+3. Execute the action (move tokens, mint or burn)
+4. Recalculate interest rates (because supply/demand just changed)
 
-The Pool contract is the entry point for all user-facing operations. It does not contain the logic directly --- instead, it delegates to library contracts (`SupplyLogic`, `BorrowLogic`, `ValidationLogic`, etc.) that are linked at deployment time. This keeps the Pool contract within Ethereum's contract size limits while centralizing the interface.
+Understanding this rhythm is more important than understanding any individual line of code.
 
 ---
 
-## Supply Flow
+## The Lifecycle of a Lending Position
+
+Before diving into each operation, here is the big picture. A typical user journey looks like this:
+
+```
+1. SUPPLY    →  Deposit USDC, receive aUSDC, start earning interest
+2. EARN      →  aUSDC balance grows every second (no action needed)
+3. BORROW    →  Post aUSDC as collateral, borrow ETH, pay interest
+4. REPAY     →  Return borrowed ETH, debt tokens burn
+5. WITHDRAW  →  Redeem aUSDC for USDC (original deposit + interest)
+```
+
+Each step changes the protocol's supply-demand balance, which in turn moves interest rates for everyone. When you supply, you add liquidity and push rates down. When you borrow, you remove liquidity and push rates up. The protocol continuously adjusts to find equilibrium.
+
+---
+
+## Supply: Depositing Assets into the Pool
 
 <video src="../animations/final/supply_flow.webm" controls autoplay loop muted playsinline style="width:100%;max-width:800px;border-radius:8px;margin:20px 0"></video>
 
-### The User's Perspective
+### What Happens Economically
 
-A user calls `Pool.supply()` to deposit assets and begin earning interest:
+When you supply 1,000 USDC to Aave:
 
-```solidity
-function supply(
-    address asset,
-    uint256 amount,
-    address onBehalfOf,
-    uint16 referralCode
-) external virtual override {
-    SupplyLogic.executeSupply(
-        _reserves,
-        _reservesList,
-        _usersConfig[onBehalfOf],
-        DataTypes.ExecuteSupplyParams({
-            asset: asset,
-            amount: amount,
-            onBehalfOf: onBehalfOf,
-            referralCode: referralCode
-        })
-    );
-}
-```
+1. Your USDC leaves your wallet and enters the protocol's vault (the aToken contract)
+2. You receive aUSDC in return --- a receipt that earns interest
+3. Your aUSDC is automatically enabled as collateral (if eligible and it is your first deposit of this asset)
+4. Interest rates for USDC adjust downward slightly, because there is now more liquidity available
 
-Parameters:
-- `asset`: The address of the underlying token (e.g., USDC).
-- `amount`: How much to supply.
-- `onBehalfOf`: The address that will receive the aTokens. Usually `msg.sender`, but can be a different address (e.g., for zap contracts).
-- `referralCode`: Used for referral tracking. Usually `0`.
+From this moment, you are earning interest. Your aUSDC balance increases every second. You can hold it, transfer it, use it as collateral, or redeem it at any time.
 
-### Inside SupplyLogic.executeSupply()
+### The Flow Step by Step
 
-This is where the actual work happens:
+**Step 1: Update state.** Before anything else, the protocol settles all pending interest by updating the liquidity index and variable borrow index. This ensures the correct number of scaled aTokens will be minted. If the index were stale, you would receive too many or too few tokens.
 
-```solidity
-function executeSupply(
-    mapping(address => DataTypes.ReserveData) storage reservesData,
-    mapping(uint256 => address) storage reservesList,
-    DataTypes.UserConfigurationMap storage userConfig,
-    DataTypes.ExecuteSupplyParams memory params
-) external {
-    DataTypes.ReserveData storage reserve = reservesData[params.asset];
-    DataTypes.ReserveCache memory reserveCache = reserve.cache();
+**Step 2: Validate.** The protocol checks several conditions:
 
-    // Step 1: Update indexes
-    reserve.updateState(reserveCache);
+| Check                  | Why                                                        |
+|-----------------------|-------------------------------------------------------------|
+| Amount is non-zero    | Prevent wasted gas on empty transactions                    |
+| Reserve is active     | The asset has been properly initialized                     |
+| Reserve is not paused | Emergency pause is not engaged                              |
+| Reserve is not frozen | Frozen reserves reject new deposits (but allow withdrawals) |
+| Supply cap not exceeded | Governance-set limit on total deposits per asset           |
 
-    // Step 2: Validate
-    ValidationLogic.validateSupply(reserveCache, reserve, params.amount);
+Supply caps are a V3 innovation. They prevent any single asset from dominating the protocol's risk exposure. If the USDC supply cap is $500M and there is already $499M deposited, you can deposit at most $1M more.
 
-    // Step 3: Update interest rates
-    reserve.updateInterestRates(
-        reserveCache,
-        params.asset,
-        params.amount,  // liquidityAdded
-        0               // liquidityRemoved
-    );
+**Step 3: Update interest rates.** Adding liquidity decreases utilization, which typically decreases borrow and supply rates. The protocol recalculates rates now, using the new liquidity level.
 
-    // Step 4: Transfer underlying from user to aToken contract
-    IERC20(params.asset).safeTransferFrom(
-        msg.sender,
-        reserveCache.aTokenAddress,
-        params.amount
-    );
+**Step 4: Transfer underlying.** Your USDC moves from your wallet to the aToken contract via `safeTransferFrom`. The aToken contract is the vault --- it holds all the underlying assets for that reserve.
 
-    // Step 5: Mint aTokens
-    bool isFirstSupply = IAToken(reserveCache.aTokenAddress).mint(
-        msg.sender,
-        params.onBehalfOf,
-        params.amount,
-        reserveCache.nextLiquidityIndex
-    );
+Note: the caller (`msg.sender`) always sends the tokens, even if the aTokens are being minted to a different address via the `onBehalfOf` parameter. This enables zap contracts and other integrations where one contract deposits on behalf of a user.
 
-    // Step 6: If first supply, enable asset as collateral
-    if (isFirstSupply) {
-        if (
-            ValidationLogic.validateAutomaticUseAsCollateral(
-                reservesData,
-                reservesList,
-                userConfig,
-                reserveCache.reserveConfiguration,
-                reserveCache.aTokenAddress
-            )
-        ) {
-            userConfig.setUsingAsCollateral(reserve.id, true);
-            emit ReserveUsedAsCollateralEnabled(params.asset, params.onBehalfOf);
-        }
-    }
+**Step 5: Mint aTokens.** The protocol mints scaled aTokens to the recipient. As covered in Chapter 4, it stores `amount / liquidityIndex` and your `balanceOf()` immediately reflects the full deposited amount.
 
-    emit Supply(params.asset, msg.sender, params.onBehalfOf, params.amount, params.referralCode);
-}
-```
+**Step 6: Auto-enable as collateral.** If this is your first deposit of this asset, the protocol checks whether it is eligible for collateral use (non-zero LTV, compatible with isolation mode, etc.) and automatically enables it. This saves users a separate transaction.
 
-Let's walk through each step in detail.
+### Numerical Example
 
-### Step 1: reserve.updateState()
+You supply 10,000 USDC. The current liquidity index is 1.03. The supply cap is 100M USDC, and current deposits total 45M.
 
-As covered in Chapter 3, this updates the liquidity index and variable borrow index to account for interest accrued since the last interaction. It also accrues the treasury's share of interest.
-
-This must happen **before** any other operation because minting aTokens requires the current index. If the index were stale, the wrong number of scaled tokens would be minted.
-
-### Step 2: ValidationLogic.validateSupply()
-
-```solidity
-function validateSupply(
-    DataTypes.ReserveCache memory reserveCache,
-    DataTypes.ReserveData storage reserve,
-    uint256 amount
-) internal view {
-    require(amount != 0, Errors.INVALID_AMOUNT);
-
-    (bool isActive, bool isFrozen, , , bool isPaused) = reserveCache
-        .reserveConfiguration
-        .getFlags();
-
-    require(isActive, Errors.RESERVE_INACTIVE);
-    require(!isPaused, Errors.RESERVE_PAUSED);
-    require(!isFrozen, Errors.RESERVE_FROZEN);
-
-    uint256 supplyCap = reserveCache.reserveConfiguration.getSupplyCap();
-    require(
-        supplyCap == 0 ||
-            ((IAToken(reserveCache.aTokenAddress).scaledTotalSupply() +
-                uint256(reserve.accruedToTreasury))
-                .rayMul(reserveCache.nextLiquidityIndex) + amount) <=
-            supplyCap * (10 ** reserveCache.reserveConfiguration.getDecimals()),
-        Errors.SUPPLY_CAP_EXCEEDED
-    );
-}
-```
-
-Validation checks:
-- The amount is non-zero.
-- The reserve is **active** (has been properly initialized and not deactivated).
-- The reserve is **not paused** (emergency pause is not engaged).
-- The reserve is **not frozen** (frozen reserves reject new deposits but allow withdrawals and repays).
-- The **supply cap** is not exceeded. Supply caps limit total deposits to control risk exposure.
-
-### Step 3: reserve.updateInterestRates()
-
-Interest rates are recalculated because the supply just increased. More liquidity means lower utilization, which typically means lower rates:
-
-```solidity
-function updateInterestRates(
-    DataTypes.ReserveData storage reserve,
-    DataTypes.ReserveCache memory reserveCache,
-    address reserveAddress,
-    uint256 liquidityAdded,
-    uint256 liquidityRemoved
-) internal {
-    UpdateInterestRatesLocalVars memory vars;
-
-    vars.totalVariableDebt = reserveCache.nextScaledVariableDebt.rayMul(
-        reserveCache.nextVariableBorrowIndex
-    );
-
-    (
-        vars.nextLiquidityRate,
-        vars.nextStableRate,
-        vars.nextVariableRate
-    ) = IReserveInterestRateStrategy(reserve.interestRateStrategyAddress)
-        .calculateInterestRates(
-            DataTypes.CalculateInterestRatesParams({
-                unbacked: reserve.unbacked,
-                liquidityAdded: liquidityAdded,
-                liquidityTaken: liquidityRemoved,
-                totalStableDebt: reserveCache.nextTotalStableDebt,
-                totalVariableDebt: vars.totalVariableDebt,
-                averageStableBorrowRate: reserveCache.nextAvgStableBorrowRate,
-                reserveFactor: reserveCache.reserveFactor,
-                reserve: reserveAddress,
-                aToken: reserveCache.aTokenAddress
-            })
-        );
-
-    reserve.currentLiquidityRate = vars.nextLiquidityRate.toUint128();
-    reserve.currentStableBorrowRate = vars.nextStableRate.toUint128();
-    reserve.currentVariableBorrowRate = vars.nextVariableRate.toUint128();
-
-    emit ReserveDataUpdated(
-        reserveAddress,
-        vars.nextLiquidityRate,
-        vars.nextStableRate,
-        vars.nextVariableRate,
-        reserveCache.nextLiquidityIndex,
-        reserveCache.nextVariableBorrowIndex
-    );
-}
-```
-
-The `liquidityAdded` parameter tells the rate strategy how much new liquidity is entering. For a supply operation, this equals the deposit amount. The rate strategy (covered in Chapter 2) uses this plus the current debt to compute new utilization and rates.
-
-### Step 4: Transfer Underlying
-
-The user's tokens are transferred directly to the aToken contract. The aToken contract acts as the vault --- it holds all the underlying assets for that reserve.
-
-```solidity
-IERC20(params.asset).safeTransferFrom(
-    msg.sender,
-    reserveCache.aTokenAddress,
-    params.amount
-);
-```
-
-Note: `msg.sender` is always the one sending the tokens, even when `onBehalfOf` is a different address. The caller pays; the beneficiary receives the aTokens.
-
-### Step 5: Mint aTokens
-
-The Pool calls `aToken.mint()`, which calls `_mintScaled()` as detailed in Chapter 4:
-
-```solidity
-bool isFirstSupply = IAToken(reserveCache.aTokenAddress).mint(
-    msg.sender,
-    params.onBehalfOf,
-    params.amount,
-    reserveCache.nextLiquidityIndex
-);
-```
-
-The `nextLiquidityIndex` (the freshly updated index) is passed explicitly. The aToken stores `amount / index` as the user's scaled balance.
-
-### Step 6: Auto-Enable as Collateral
-
-If this is the user's first deposit of this asset (`isFirstSupply == true`) and the asset is eligible for collateral use, the protocol automatically enables it as collateral in the user's configuration bitmap.
-
-The user config bitmap is a compact data structure where each bit position represents a reserve, with two bits per reserve: one for "is using as collateral" and one for "is borrowing." This is far cheaper than storing individual boolean mappings.
-
-```solidity
-if (isFirstSupply) {
-    if (
-        ValidationLogic.validateAutomaticUseAsCollateral(
-            reservesData,
-            reservesList,
-            userConfig,
-            reserveCache.reserveConfiguration,
-            reserveCache.aTokenAddress
-        )
-    ) {
-        userConfig.setUsingAsCollateral(reserve.id, true);
-        emit ReserveUsedAsCollateralEnabled(params.asset, params.onBehalfOf);
-    }
-}
-```
-
-The auto-collateral check considers whether the asset has a non-zero LTV, whether the user is in isolation mode (which restricts collateral to a single asset), and other configuration flags.
+- Validation: 10,000 < 55M remaining cap --- passes
+- Scaled aTokens minted: 10,000 / 1.03 = 9,708.74
+- Your `balanceOf()`: 9,708.74 × 1.03 = 10,000.00 aUSDC
+- After one year at 3% APY: 9,708.74 × 1.0609 = 10,300.00 aUSDC
 
 ---
 
-## Borrow Flow
+## Borrow: Taking a Loan Against Your Collateral
 
 <video src="../animations/final/borrow_flow.webm" controls autoplay loop muted playsinline style="width:100%;max-width:800px;border-radius:8px;margin:20px 0"></video>
 
-### The User's Perspective
+### What Happens Economically
 
-A user calls `Pool.borrow()` to take a loan against their collateral:
+Borrowing is the most scrutinized operation in the protocol. When you borrow:
 
-```solidity
-function borrow(
-    address asset,
-    uint256 amount,
-    uint256 interestRateMode,
-    uint16 referralCode,
-    address onBehalfOf
-) external virtual override {
-    BorrowLogic.executeBorrow(
-        _reserves,
-        _reservesList,
-        _eModeCategories,
-        _usersConfig[onBehalfOf],
-        DataTypes.ExecuteBorrowParams({
-            asset: asset,
-            user: msg.sender,
-            onBehalfOf: onBehalfOf,
-            amount: amount,
-            interestRateMode: DataTypes.InterestRateMode(interestRateMode),
-            referralCode: referralCode,
-            releaseUnderlying: true,
-            maxStableRateBorrowSizePercent: _maxStableRateBorrowSizePercent,
-            reservesCount: _reservesCount,
-            oracle: IPoolAddressesProvider(_addressesProvider)
-                .getPriceOracle(),
-            userEModeCategory: _usersEModeCategory[onBehalfOf],
-            priceOracleSentinel: IPoolAddressesProvider(_addressesProvider)
-                .getPriceOracleSentinel()
-        })
-    );
-}
-```
+1. You are taking assets from the pool --- assets that belong to depositors
+2. You are creating an obligation (debt) that grows with interest
+3. Your existing deposits serve as collateral guaranteeing you will repay
+4. If your collateral value drops too far relative to your debt, you can be liquidated
 
-Parameters:
-- `asset`: The token to borrow.
-- `amount`: How much to borrow.
-- `interestRateMode`: `1` for stable, `2` for variable.
-- `referralCode`: Referral tracking.
-- `onBehalfOf`: Who takes on the debt. Usually `msg.sender`, but can be another address if borrow delegation is set up.
+The protocol must ensure, at the moment of borrowing, that you have enough collateral to safely cover the new debt. This is the **health factor check** --- the single most important safety mechanism in the protocol.
 
-### Inside BorrowLogic.executeBorrow()
+### The Health Factor
 
-```solidity
-function executeBorrow(
-    mapping(address => DataTypes.ReserveData) storage reservesData,
-    mapping(uint256 => address) storage reservesList,
-    mapping(uint8 => DataTypes.EModeCategory) storage eModeCategories,
-    DataTypes.UserConfigurationMap storage userConfig,
-    DataTypes.ExecuteBorrowParams memory params
-) public {
-    DataTypes.ReserveData storage reserve = reservesData[params.asset];
-    DataTypes.ReserveCache memory reserveCache = reserve.cache();
-
-    // Step 1: Update indexes
-    reserve.updateState(reserveCache);
-
-    // Step 2: Validate the borrow
-    (
-        bool isolationModeActive,
-        address isolationModeCollateralAddress,
-        uint256 isolationModeDebtCeiling
-    ) = ValidationLogic.validateBorrow(
-        reservesData,
-        reservesList,
-        eModeCategories,
-        DataTypes.ValidateBorrowParams({
-            reserveCache: reserveCache,
-            userConfig: userConfig,
-            asset: params.asset,
-            userAddress: params.onBehalfOf,
-            amount: params.amount,
-            interestRateMode: params.interestRateMode,
-            maxStableBorrowPercent: params.maxStableRateBorrowSizePercent,
-            reservesCount: params.reservesCount,
-            oracle: params.oracle,
-            userEModeCategory: params.userEModeCategory,
-            priceOracleSentinel: params.priceOracleSentinel
-        })
-    );
-
-    // Step 3: Mint debt tokens
-    bool isFirstBorrowing;
-    if (params.interestRateMode == DataTypes.InterestRateMode.VARIABLE) {
-        (isFirstBorrowing, reserveCache.nextScaledVariableDebt) = IVariableDebtToken(
-            reserveCache.variableDebtTokenAddress
-        ).mint(params.user, params.onBehalfOf, params.amount, reserveCache.nextVariableBorrowIndex);
-    } else {
-        // Stable borrow path
-        (
-            isFirstBorrowing,
-            reserveCache.nextTotalStableDebt,
-            reserveCache.nextAvgStableBorrowRate
-        ) = IStableDebtToken(reserveCache.stableDebtTokenAddress).mint(
-            params.user,
-            params.onBehalfOf,
-            params.amount,
-            reserve.currentStableBorrowRate
-        );
-    }
-
-    // Step 4: Mark as borrowing in user config
-    if (isFirstBorrowing) {
-        userConfig.setBorrowing(reserve.id, true);
-    }
-
-    // Step 5: Update isolation mode debt if applicable
-    if (isolationModeActive) {
-        uint256 isolationModeTotalDebt = reservesData[isolationModeCollateralAddress]
-            .isolationModeTotalDebt;
-        // Update the isolation mode total debt tracking
-        // ...
-    }
-
-    // Step 6: Update interest rates
-    reserve.updateInterestRates(
-        reserveCache,
-        params.asset,
-        0,             // liquidityAdded (none --- borrowing removes liquidity)
-        params.releaseUnderlying ? params.amount : 0  // liquidityRemoved
-    );
-
-    // Step 7: Transfer underlying to borrower
-    if (params.releaseUnderlying) {
-        IAToken(reserveCache.aTokenAddress).transferUnderlyingTo(
-            params.user,
-            params.amount
-        );
-    }
-
-    emit Borrow(
-        params.asset,
-        params.user,
-        params.onBehalfOf,
-        params.amount,
-        params.interestRateMode,
-        // rate, referralCode...
-    );
-}
-```
-
-### Step 2: Borrow Validation (Detail)
-
-The borrow validation is the most complex validation in the protocol. It checks:
-
-```solidity
-// Simplified from ValidationLogic.validateBorrow()
-
-// Basic checks
-require(amount != 0, Errors.INVALID_AMOUNT);
-require(isActive && !isPaused, Errors.RESERVE_INACTIVE_OR_PAUSED);
-require(!isFrozen, Errors.RESERVE_FROZEN);
-require(borrowingEnabled, Errors.BORROWING_NOT_ENABLED);
-
-// Borrow cap check
-uint256 borrowCap = reserveConfiguration.getBorrowCap();
-require(
-    borrowCap == 0 ||
-        (totalDebt + amount) <= borrowCap * (10 ** decimals),
-    Errors.BORROW_CAP_EXCEEDED
-);
-
-// If stable rate, check additional constraints
-if (interestRateMode == STABLE) {
-    require(stableBorrowingEnabled, Errors.STABLE_BORROWING_NOT_ENABLED);
-    require(!userConfig.isUsingAsCollateral(reserve.id), Errors.COLLATERAL_SAME_AS_BORROWING_CURRENCY);
-    // Stable borrows limited to a percentage of available liquidity
-}
-
-// The critical check: health factor
-(
-    uint256 userCollateralInBaseCurrency,
-    uint256 userDebtInBaseCurrency,
-    uint256 currentLtv,
-    uint256 currentLiquidationThreshold,
-    uint256 healthFactor,
-    bool hasZeroLtvCollateral
-) = GenericLogic.calculateUserAccountData(
-    reservesData,
-    reservesList,
-    eModeCategories,
-    params
-);
-
-require(userCollateralInBaseCurrency != 0, Errors.COLLATERAL_BALANCE_IS_ZERO);
-require(currentLtv != 0, Errors.LTV_VALIDATION_FAILED);
-
-// After adding this borrow, health factor must still be > 1
-require(
-    healthFactor > HEALTH_FACTOR_LIQUIDATION_THRESHOLD,
-    Errors.HEALTH_FACTOR_LOWER_THAN_LIQUIDATION_THRESHOLD
-);
-
-// Check that the new borrow doesn't exceed the user's borrowing power
-uint256 amountInBaseCurrency = IPriceOracleGetter(oracle)
-    .getAssetPrice(asset)
-    .mul(amount)
-    .div(10 ** decimals);
-require(
-    (userDebtInBaseCurrency + amountInBaseCurrency) <=
-        userCollateralInBaseCurrency.percentMul(currentLtv),
-    Errors.COLLATERAL_CANNOT_COVER_NEW_BORROW
-);
-```
-
-The health factor calculation iterates over all reserves where the user has positions, sums their collateral (weighted by liquidation thresholds) and their debt, and computes:
+Before any borrow is approved, the protocol computes:
 
 ```
-healthFactor = (totalCollateralInBaseCurrency * weightedAvgLiquidationThreshold) / totalDebtInBaseCurrency
+                  totalCollateral × weightedLiquidationThreshold
+healthFactor = ──────────────────────────────────────────────────
+                              totalDebt
 ```
 
-This must remain above `1.0` (represented as `1e18` in Aave) after the new borrow.
+All values are converted to a common base currency (typically USD) using oracle prices. The **liquidation threshold** is a per-asset parameter (e.g., 85% for ETH) that reflects how much of the collateral's value is considered "safe."
 
-### Step 3: Mint Debt Tokens
+The health factor must remain above 1.0 after the new borrow. If it would not, the transaction reverts.
 
-For variable borrows (the common path):
+### Example: The Health Factor in Action
 
-```solidity
-(isFirstBorrowing, reserveCache.nextScaledVariableDebt) = IVariableDebtToken(
-    reserveCache.variableDebtTokenAddress
-).mint(params.user, params.onBehalfOf, params.amount, reserveCache.nextVariableBorrowIndex);
+You have deposited 10 ETH (worth $20,000). ETH has a liquidation threshold of 85%.
+
+```
+Collateral value for health factor purposes: $20,000 × 85% = $17,000
 ```
 
-As detailed in Chapter 5, this stores `amount / variableBorrowIndex` as the user's scaled debt balance. The returned `nextScaledVariableDebt` is the updated total supply, which is cached for the subsequent interest rate update.
+You want to borrow 10,000 USDC:
 
-### Step 7: Transfer Underlying
-
-The borrowed assets are transferred from the aToken contract (which holds all the underlying) to the borrower:
-
-```solidity
-IAToken(reserveCache.aTokenAddress).transferUnderlyingTo(
-    params.user,
-    params.amount
-);
+```
+healthFactor = $17,000 / $10,000 = 1.70  ✓  (above 1.0 --- borrow allowed)
 ```
 
-This calls the aToken's `transferUnderlyingTo()` function, which performs a simple `safeTransfer` of the underlying token. The aToken contract is the vault, and only the Pool (via the `onlyPool` modifier) can trigger withdrawals from it.
+You want to borrow 16,000 USDC:
+
+```
+healthFactor = $17,000 / $16,000 = 1.0625  ✓  (barely above 1.0 --- risky but allowed)
+```
+
+You want to borrow 18,000 USDC:
+
+```
+healthFactor = $17,000 / $18,000 = 0.944  ✗  (below 1.0 --- borrow rejected)
+```
+
+The protocol also checks against the **LTV (Loan-to-Value)** ratio, which is typically lower than the liquidation threshold. LTV determines the maximum you can borrow; liquidation threshold determines when you get liquidated. The gap between them provides a buffer.
+
+### The Flow Step by Step
+
+**Step 1: Update state.** Same as supply --- settle pending interest, update indexes.
+
+**Step 2: Validate.** This is the most complex validation in the protocol:
+
+| Check                         | Why                                                          |
+|------------------------------|--------------------------------------------------------------|
+| Amount is non-zero           | Prevent wasted gas                                            |
+| Reserve is active, not paused | Standard safety checks                                       |
+| Borrowing is enabled         | Some assets are supply-only (e.g., governance tokens)        |
+| Borrow cap not exceeded      | Governance-set limit on total borrows per asset              |
+| User has collateral          | Cannot borrow with nothing backing the loan                  |
+| Health factor > 1.0          | Position must remain solvent after the borrow                |
+| Debt within LTV limits       | New total debt cannot exceed collateral × LTV ratio          |
+
+If the user is borrowing via **delegation** (someone else's collateral), the protocol also checks that the delegator has granted sufficient borrow allowance.
+
+**Step 3: Mint debt tokens.** For variable borrows (the standard path), scaled debt tokens are minted: `borrowAmount / variableBorrowIndex`. For stable borrows (deprecated on most deployments), the user's personal rate is recorded and the principal is stored directly.
+
+**Step 4: Update interest rates.** Borrowing removes liquidity from the pool, increasing utilization. Rates go up.
+
+**Step 5: Transfer underlying to borrower.** The borrowed assets are transferred from the aToken contract (the vault) to the borrower's wallet.
+
+### Isolation Mode
+
+Aave V3 introduced **isolation mode** for newly listed or riskier assets. When a user's only collateral is an isolated asset, they can only borrow specific stablecoins up to a debt ceiling. This prevents a risky collateral asset from being used to borrow unlimited amounts.
+
+The borrow flow checks isolation mode constraints and tracks the isolated asset's total debt against its ceiling.
 
 ---
 
-## Repay Flow
+## Repay: Returning What You Borrowed
 
 <video src="../animations/final/repay_withdraw.webm" controls autoplay loop muted playsinline style="width:100%;max-width:800px;border-radius:8px;margin:20px 0"></video>
 
-### The User's Perspective
+### What Happens Economically
 
-A user calls `Pool.repay()` to pay back their debt:
+Repaying is conceptually simple: you return borrowed assets to the pool, and your debt decreases. Interest rates adjust downward because utilization decreases.
 
-```solidity
-function repay(
-    address asset,
-    uint256 amount,
-    uint256 interestRateMode,
-    address onBehalfOf
-) external virtual override returns (uint256) {
-    return BorrowLogic.executeRepay(
-        _reserves,
-        _reservesList,
-        _usersConfig[onBehalfOf],
-        DataTypes.ExecuteRepayParams({
-            asset: asset,
-            amount: amount,
-            interestRateMode: DataTypes.InterestRateMode(interestRateMode),
-            onBehalfOf: onBehalfOf,
-            useATokens: false
-        })
-    );
-}
+But there are practical nuances that the protocol must handle.
+
+### The Full-Repay Problem
+
+How do you repay your *exact* debt when interest accrues every second? By the time your transaction is mined, your debt may be a few cents higher than when you submitted it.
+
+Aave solves this elegantly: pass `type(uint256).max` (the maximum possible number) as the repay amount. The protocol interprets this as "repay everything I owe." It computes your exact debt at execution time and transfers only that amount --- not the maximum. You just need to have approved enough tokens.
+
+```
+If your debt is 1,052.47 USDC and you pass type(uint256).max:
+  → Protocol reads your actual debt: 1,052.47
+  → Transfers exactly 1,052.47 USDC from your wallet
+  → Burns all your debt tokens
+  → Your debt is now zero
 ```
 
-A key feature: passing `type(uint256).max` as `amount` means "repay my entire debt." The protocol will compute the exact debt and repay that amount.
+For partial repayment, just pass the specific amount. The protocol will burn debt tokens proportional to what you repay.
 
-### Inside BorrowLogic.executeRepay()
+### The Flow Step by Step
 
-```solidity
-function executeRepay(
-    mapping(address => DataTypes.ReserveData) storage reservesData,
-    mapping(uint256 => address) storage reservesList,
-    DataTypes.UserConfigurationMap storage userConfig,
-    DataTypes.ExecuteRepayParams memory params
-) external returns (uint256) {
-    DataTypes.ReserveData storage reserve = reservesData[params.asset];
-    DataTypes.ReserveCache memory reserveCache = reserve.cache();
+**Step 1: Update state.** Settle pending interest, update indexes.
 
-    // Step 1: Update indexes
-    reserve.updateState(reserveCache);
+**Step 2: Determine the actual repay amount.** Read the borrower's current debt (which includes all accrued interest as of this second), then cap the repay amount to the lesser of what the user specified and the actual debt.
 
-    // Step 2: Determine the actual repay amount
-    uint256 variableDebt = IERC20(reserveCache.variableDebtTokenAddress)
-        .balanceOf(params.onBehalfOf);
-    uint256 stableDebt = IERC20(reserveCache.stableDebtTokenAddress)
-        .balanceOf(params.onBehalfOf);
+**Step 3: Validate.** Checks are minimal compared to borrowing:
 
-    // Validate
-    ValidationLogic.validateRepay(
-        reserveCache,
-        params.amount,
-        params.interestRateMode,
-        params.onBehalfOf,
-        stableDebt,
-        variableDebt
-    );
+| Check                    | Why                                                    |
+|-------------------------|--------------------------------------------------------|
+| Debt exists             | Cannot repay what you do not owe                       |
+| Amount is non-zero      | Prevent wasted gas                                      |
+| Reserve is active       | Standard safety check                                   |
 
-    // Determine actual repay amount
-    uint256 paybackAmount;
-    if (params.interestRateMode == DataTypes.InterestRateMode.VARIABLE) {
-        paybackAmount = variableDebt;
-    } else {
-        paybackAmount = stableDebt;
-    }
+Note: repayment does not require a health factor check. Repaying debt always improves (or maintains) the user's position. The protocol also allows anyone to repay on behalf of someone else --- there is no security risk in reducing someone's debt.
 
-    // If user passed a specific amount less than full debt, use that
-    if (params.amount < paybackAmount) {
-        paybackAmount = params.amount;
-    }
+**Step 4: Burn debt tokens.** The protocol burns `repayAmount / currentIndex` in scaled terms from the borrower's address.
 
-    // Step 3: Burn debt tokens
-    if (params.interestRateMode == DataTypes.InterestRateMode.VARIABLE) {
-        reserveCache.nextScaledVariableDebt = IVariableDebtToken(
-            reserveCache.variableDebtTokenAddress
-        ).burn(params.onBehalfOf, paybackAmount, reserveCache.nextVariableBorrowIndex);
-    } else {
-        (
-            reserveCache.nextTotalStableDebt,
-            reserveCache.nextAvgStableBorrowRate
-        ) = IStableDebtToken(reserveCache.stableDebtTokenAddress).burn(
-            params.onBehalfOf,
-            paybackAmount
-        );
-    }
+**Step 5: Update interest rates.** Repaying adds liquidity back to the pool (the repaid assets go to the aToken vault), decreasing utilization and rates.
 
-    // Step 4: Update interest rates
-    reserve.updateInterestRates(
-        reserveCache,
-        params.asset,
-        params.useATokens ? 0 : paybackAmount,  // liquidityAdded
-        0                                          // liquidityRemoved
-    );
+**Step 6: Transfer underlying from repayer to vault.** The repaid assets move from the repayer's wallet to the aToken contract.
 
-    // Step 5: Transfer underlying from user to aToken contract
-    if (params.useATokens) {
-        // Special path: repay with aTokens (burn aTokens instead of transferring underlying)
-        IAToken(reserveCache.aTokenAddress).burn(
-            msg.sender,
-            reserveCache.aTokenAddress,
-            paybackAmount,
-            reserveCache.nextLiquidityIndex
-        );
-    } else {
-        // Normal path: transfer underlying from user
-        IERC20(params.asset).safeTransferFrom(
-            msg.sender,
-            reserveCache.aTokenAddress,
-            paybackAmount
-        );
-    }
-
-    // Step 6: If fully repaid, clear borrowing flag
-    if (stableDebt + variableDebt - paybackAmount == 0) {
-        userConfig.setBorrowing(reserve.id, false);
-    }
-
-    emit Repay(params.asset, params.onBehalfOf, msg.sender, paybackAmount, params.useATokens);
-
-    return paybackAmount;
-}
-```
-
-### The type(uint256).max Pattern
-
-When a user wants to fully repay their debt, they cannot know the exact amount because interest accrues every second. By the time their transaction is mined, the debt may be slightly higher than when they submitted it.
-
-Aave solves this with a convention: pass `type(uint256).max` (the maximum uint256 value) as the amount, and the protocol interprets this as "repay everything":
-
-```solidity
-if (params.amount < paybackAmount) {
-    paybackAmount = params.amount;
-}
-// If params.amount == type(uint256).max, this condition is false,
-// and paybackAmount stays at the full debt amount.
-```
-
-The user must approve more than enough tokens for the transfer. The protocol only transfers exactly what is owed. Any excess approval is not consumed.
+**Step 7: Clear borrow flag if fully repaid.** If the user's total debt (variable + stable) drops to zero, the protocol clears their borrowing flag in the user configuration bitmap. This is a gas optimization that speeds up future health factor calculations.
 
 ### Repay With aTokens
 
-Notice the `useATokens` parameter. If set to `true`, instead of transferring underlying tokens from the user, the protocol burns the user's aTokens:
+Aave V3 offers a neat shortcut: **repay using your aTokens** instead of holding the underlying asset. If you supplied 5,000 USDC and borrowed 1,000 USDC, you can repay the 1,000 USDC debt by burning 1,000 aUSDC --- without needing any USDC in your wallet.
 
-```solidity
-if (params.useATokens) {
-    IAToken(reserveCache.aTokenAddress).burn(
-        msg.sender,
-        reserveCache.aTokenAddress,
-        paybackAmount,
-        reserveCache.nextLiquidityIndex
-    );
-}
-```
-
-This lets a user repay debt using their supply position in the same asset. For example, if you supplied 2000 USDC and borrowed 500 USDC, you can repay the 500 USDC borrow by burning 500 aUSDC, without needing to hold any USDC in your wallet.
+In this flow, the protocol burns aTokens from the repayer instead of pulling underlying tokens. The debt tokens are burned as usual. It is equivalent to withdrawing and then repaying in a single atomic step, saving gas and complexity.
 
 ---
 
-## Withdraw Flow
+## Withdraw: Redeeming Your Deposit
 
-### The User's Perspective
+### What Happens Economically
 
-A user calls `Pool.withdraw()` to redeem their aTokens for underlying assets:
+Withdrawing is the reverse of supplying: you return aTokens to the protocol and receive your underlying assets (original deposit plus interest).
 
-```solidity
-function withdraw(
-    address asset,
-    uint256 amount,
-    address to
-) external virtual override returns (uint256) {
-    return SupplyLogic.executeWithdraw(
-        _reserves,
-        _reservesList,
-        _eModeCategories,
-        _usersConfig[msg.sender],
-        DataTypes.ExecuteWithdrawParams({
-            asset: asset,
-            amount: amount,
-            to: to,
-            reservesCount: _reservesCount,
-            oracle: IPoolAddressesProvider(_addressesProvider).getPriceOracle(),
-            userEModeCategory: _usersEModeCategory[msg.sender]
-        })
-    );
-}
+```
+Deposited 10,000 USDC 6 months ago at ~3% APY
+Your aUSDC balance is now 10,150
+You withdraw 10,150 aUSDC and receive 10,150 USDC
 ```
 
-Like repay, passing `type(uint256).max` as the amount means "withdraw everything."
+Like repaying, you can pass `type(uint256).max` to withdraw everything.
 
-### Inside SupplyLogic.executeWithdraw()
+### The Health Factor Check: Why Withdrawals Can Fail
 
-```solidity
-function executeWithdraw(
-    mapping(address => DataTypes.ReserveData) storage reservesData,
-    mapping(uint256 => address) storage reservesList,
-    mapping(uint8 => DataTypes.EModeCategory) storage eModeCategories,
-    DataTypes.UserConfigurationMap storage userConfig,
-    DataTypes.ExecuteWithdrawParams memory params
-) external returns (uint256) {
-    DataTypes.ReserveData storage reserve = reservesData[params.asset];
-    DataTypes.ReserveCache memory reserveCache = reserve.cache();
+Here is the critical difference between withdrawals and supplies: if you have active borrows, withdrawing collateral reduces the backing for your debt. The protocol must prevent you from creating an undercollateralized position.
 
-    // Step 1: Update indexes
-    reserve.updateState(reserveCache);
+**Example:** You have 10 ETH ($20,000) as collateral and 12,000 USDC borrowed.
 
-    // Step 2: Determine actual withdraw amount
-    uint256 userBalance = IAToken(reserveCache.aTokenAddress)
-        .balanceOf(msg.sender);
-
-    uint256 amountToWithdraw = params.amount;
-    if (params.amount == type(uint256).max) {
-        amountToWithdraw = userBalance;
-    }
-
-    // Step 3: Validate
-    ValidationLogic.validateWithdraw(
-        reserveCache,
-        amountToWithdraw,
-        userBalance
-    );
-
-    // Step 4: Update interest rates
-    reserve.updateInterestRates(
-        reserveCache,
-        params.asset,
-        0,                  // liquidityAdded
-        amountToWithdraw    // liquidityRemoved
-    );
-
-    // Step 5: Burn aTokens and transfer underlying
-    bool isCollateral = userConfig.isUsingAsCollateral(reserve.id);
-
-    IAToken(reserveCache.aTokenAddress).burn(
-        msg.sender,
-        params.to,
-        amountToWithdraw,
-        reserveCache.nextLiquidityIndex
-    );
-
-    // Step 6: If withdrawing all, disable as collateral
-    if (isCollateral && amountToWithdraw == userBalance) {
-        userConfig.setUsingAsCollateral(reserve.id, false);
-        emit ReserveUsedAsCollateralDisabled(params.asset, msg.sender);
-    }
-
-    // Step 7: Validate health factor (critical!)
-    if (userConfig.isBorrowingAny()) {
-        require(
-            GenericLogic.calculateUserAccountData(
-                reservesData,
-                reservesList,
-                eModeCategories,
-                // ... params
-            ).healthFactor > HEALTH_FACTOR_LIQUIDATION_THRESHOLD,
-            Errors.HEALTH_FACTOR_LOWER_THAN_LIQUIDATION_THRESHOLD
-        );
-    }
-
-    emit Withdraw(params.asset, msg.sender, params.to, amountToWithdraw);
-
-    return amountToWithdraw;
-}
+```
+Current health factor: ($20,000 × 85%) / $12,000 = 1.42  ✓
 ```
 
-### The Health Factor Check
+You try to withdraw 5 ETH ($10,000):
 
-The critical difference between withdrawal and supply is the **post-operation health factor check**. When a user withdraws collateral, they may be reducing the backing for their existing borrows. The protocol must ensure they remain solvent.
+```
+After withdrawal: ($10,000 × 85%) / $12,000 = 0.71  ✗  REVERTS
+```
 
-This check only applies if the user has any active borrows (`userConfig.isBorrowingAny()`). If the user has no borrows, they can withdraw freely.
+The protocol computes the post-withdrawal health factor and rejects the transaction if it would drop to or below 1.0. You cannot extract collateral that is actively supporting debt.
 
-If the user has borrows, the protocol calculates what the health factor would be after the withdrawal. If it would drop to or below `1.0`, the transaction reverts. This prevents users from creating undercollateralized positions by withdrawing too much collateral.
+If you have **no borrows**, you can withdraw freely. The health factor check only applies when debt exists.
 
-This is why the health factor check happens **after** the aToken burn --- the protocol simulates the final state and validates it.
+### The Flow Step by Step
+
+**Step 1: Update state.** Settle pending interest, update indexes.
+
+**Step 2: Determine withdraw amount.** Read the user's current aToken balance. If they passed `type(uint256).max`, withdraw everything.
+
+**Step 3: Validate.** Basic checks:
+
+| Check                     | Why                                              |
+|--------------------------|--------------------------------------------------|
+| Amount is non-zero       | Prevent wasted gas                                |
+| Amount ≤ user's balance  | Cannot withdraw more than you have               |
+| Reserve is active        | Standard safety check                             |
+
+**Step 4: Update interest rates.** Withdrawing removes liquidity, increasing utilization and rates.
+
+**Step 5: Burn aTokens and transfer underlying.** The protocol burns `withdrawAmount / currentIndex` scaled aTokens and transfers the underlying assets from the aToken contract to the user.
+
+**Step 6: Disable as collateral if fully withdrawn.** If the user withdrew their entire position, the collateral flag is cleared.
+
+**Step 7: Validate health factor.** If the user has any active borrows, the protocol computes the health factor after the withdrawal. If it would be at or below 1.0, the entire transaction reverts. This check happens *after* the burn, not before, so the protocol validates the final state.
 
 ---
 
-## The updateState() + updateInterestRates() Pattern
+## The "Update State Then Update Rates" Pattern
 
-Every operation in Aave V3 follows the same bookkeeping rhythm:
+Every operation in Aave V3 follows the same bookkeeping pattern. Understanding it conceptually is more important than reading the code.
 
-1. **updateState()** at the beginning --- bring indexes current.
-2. **Execute the operation** --- mint/burn tokens, transfer assets.
-3. **updateInterestRates()** at the end --- recalculate rates.
+### Why State Must Be Updated First
 
-This pattern is the heartbeat of the protocol. Let's examine why both are necessary and why they happen in this order.
+Before any token operation, the protocol must bring its indexes up to date. Indexes represent accumulated interest since the protocol's inception. If the last interaction with a reserve was 10 minutes ago, those 10 minutes of interest need to be calculated and added to the indexes.
 
-### Why updateState() Comes First
-
-Indexes must be current before any token operation because mint and burn amounts depend on the index:
+Why? Because minting and burning depend on the current index:
 
 ```
-scaledAmount = amount / currentIndex
+scaledTokens = amount / currentIndex
 ```
 
-If the index is stale (reflecting prices from 10 minutes ago instead of now), the wrong number of scaled tokens will be minted or burned. This would create an accounting discrepancy that compounds over time.
+A stale index means minting or burning the wrong number of scaled tokens. This would create an accounting error that compounds over time. Even a tiny error, accumulated across millions of transactions, could create a serious discrepancy.
 
-`updateState()` also accrues treasury revenue. If this is skipped, the treasury misses its share of interest for the elapsed period.
+The state update also accrues treasury revenue. If skipped, the protocol would miss its share of interest for the elapsed period.
 
-### Why updateInterestRates() Comes Last
+### Why Rates Must Be Updated Last
 
-After the operation executes, the reserve's supply and demand have changed:
+After the operation executes, the reserve's supply-demand balance has changed:
 
-- **Supply** increases available liquidity and decreases utilization.
-- **Borrow** decreases available liquidity and increases utilization.
-- **Repay** increases available liquidity and decreases utilization.
-- **Withdraw** decreases available liquidity and increases utilization.
+| Operation | What Changed                  | Utilization | Rates      |
+|-----------|------------------------------|-------------|------------|
+| Supply    | More liquidity available      | Decreases   | Go down    |
+| Borrow    | Less liquidity, more debt     | Increases   | Go up      |
+| Repay     | Less debt, more liquidity     | Decreases   | Go down    |
+| Withdraw  | Less liquidity available      | Increases   | Go up      |
 
-The interest rates must be recalculated to reflect the new utilization:
+The rates must be recalculated to reflect the new reality. These new rates are stored and used by the *next* state update to compute how much interest accrues over the intervening period.
 
-| Operation | Utilization Change | Rate Effect              |
-|-----------|-------------------|--------------------------|
-| Supply    | Decreases         | Rates decrease           |
-| Borrow    | Increases         | Rates increase           |
-| Repay     | Decreases         | Rates decrease           |
-| Withdraw  | Increases         | Rates increase           |
+### The Feedback Loop
 
-The new rates are written to storage and will be used by the next `updateState()` call to compute index growth. This creates a feedback loop:
+This creates a self-correcting cycle:
 
 ```
-updateState() → uses stored rates to compute index growth
-                  ↓
-Execute operation → changes supply/demand
-                  ↓
-updateInterestRates() → computes new rates based on new utilization
-                  ↓
-(next operation) → updateState() uses these new rates
+State update → uses stored rates to compute interest for elapsed time
+     ↓
+Execute operation → changes supply and/or demand
+     ↓
+Rate update → computes new rates based on new utilization
+     ↓
+(time passes, no one interacts)
+     ↓
+Next state update → uses those rates to compute interest for elapsed time
 ```
 
-### The Reserve Cache
-
-You may have noticed that many functions receive a `ReserveCache memory` parameter. This is a gas optimization. Rather than reading from storage multiple times (which costs 2100 gas for a cold `SLOAD` or 100 gas for a warm one), the protocol reads all needed reserve data once into a memory struct at the beginning of the operation:
-
-```solidity
-DataTypes.ReserveCache memory reserveCache = reserve.cache();
-```
-
-The cache contains:
-- Current and next liquidity index
-- Current and next variable borrow index
-- Current and next total stable debt
-- Current and next average stable borrow rate
-- Current scaled variable debt
-- Reserve factor
-- Token addresses (aToken, stable debt, variable debt)
-- Reserve configuration
-
-Functions read from the cache and write "next" values into it as the operation progresses. Only at the end are the final values committed to storage. This pattern saves significant gas, especially for operations that touch many reserve fields.
+If no one interacts with a reserve for hours or days, no problem. The first interaction catches up all accumulated interest in one shot. The indexes "jump" to account for the elapsed time at the stored rates. There is no "missed interest" problem.
 
 ### Why This Design Is Robust
 
-The update-execute-update pattern has several important properties:
+1. **No stale data.** Every operation starts with fresh indexes. There is no window where incorrect values can cause wrong calculations.
 
-1. **No stale data**: Every operation starts with fresh indexes. There is no window where a stale index can cause incorrect calculations.
+2. **Atomic consistency.** All changes (indexes, rates, balances, treasury) happen within a single transaction. No intermediate state is visible to other transactions.
 
-2. **Atomic consistency**: All changes to a reserve (indexes, rates, balances, treasury) happen within a single transaction. There is no intermediate state visible to other transactions.
+3. **Self-correcting.** Idle reserves catch up automatically on the next interaction. Active reserves update every time someone touches them.
 
-3. **Self-correcting rates**: If no one interacts with a reserve for hours, the first interaction catches up all accumulated interest in one shot. The indexes grow to reflect the elapsed time, and rates are recalculated for the new state. There is no "missed interest" problem.
+4. **Simple for integrators.** A single call to `supply()`, `borrow()`, `repay()`, or `withdraw()` handles all internal bookkeeping. External protocols do not need to call `updateState()` separately.
 
-4. **Composability**: External protocols can safely interact with Aave knowing that a single call to `supply()`, `borrow()`, `repay()`, or `withdraw()` handles all internal accounting. There is no need to call `updateState()` separately.
+---
+
+## What the Protocol Prevents: A Summary of Safety Checks
+
+Across all four operations, the protocol enforces these invariants:
+
+| Invariant                                   | Enforced During           |
+|--------------------------------------------|--------------------------|
+| Cannot deposit into inactive/paused reserve | Supply                   |
+| Cannot exceed supply cap                    | Supply                   |
+| Cannot borrow without sufficient collateral | Borrow                   |
+| Health factor must stay above 1.0           | Borrow, Withdraw, Transfer |
+| Cannot exceed borrow cap                    | Borrow                   |
+| Cannot borrow from supply-only assets       | Borrow                   |
+| Cannot withdraw more than you have          | Withdraw                 |
+| Cannot repay more than you owe              | Repay (amount is capped) |
+| Debt tokens cannot be transferred           | Always                   |
+| Only the Pool can mint/burn tokens          | Always                   |
+
+These checks make Aave a **permissionless but safe** protocol. Anyone can supply, borrow, repay, or withdraw at any time, but the protocol will never allow an action that would compromise its solvency.
 
 ---
 
@@ -889,12 +374,16 @@ This chapter walked through the four core operations that make Aave V3 function 
 
 **Key takeaways:**
 
-- **All operations flow through the Pool contract**, which delegates to library contracts (`SupplyLogic`, `BorrowLogic`) for the actual logic.
-- **Supply** transfers underlying to the aToken vault, mints scaled aTokens, and auto-enables collateral for first-time suppliers.
-- **Borrow** validates solvency (health factor > 1), mints scaled debt tokens, and transfers underlying from the aToken vault to the borrower.
-- **Repay** burns debt tokens, transfers underlying back to the aToken vault, and clears the borrow flag on full repayment. The `type(uint256).max` pattern handles exact full repayments.
-- **Withdraw** burns aTokens, transfers underlying to the user, and validates that the health factor remains above 1 if the user has active borrows.
-- **Every operation follows the same pattern**: `updateState()` first (bring indexes current), execute the operation, `updateInterestRates()` last (recalculate for new utilization).
-- **The reserve cache** is a gas optimization that reads all reserve data into memory once, avoiding repeated storage reads.
+- **Supply** deposits assets into the vault, mints aTokens, and auto-enables collateral. Rates decrease because utilization drops.
 
-These four operations, combined with the accounting primitives from the previous chapters, form the core lending and borrowing engine of Aave V3. The next chapter covers what happens when things go wrong: liquidations.
+- **Borrow** is the most heavily validated operation. The protocol checks health factor, LTV limits, borrow caps, and isolation mode constraints before minting debt tokens and releasing funds. Rates increase because utilization rises.
+
+- **Repay** burns debt tokens and returns assets to the vault. The `type(uint256).max` pattern solves the problem of repaying exact debt when interest accrues every second. Anyone can repay on behalf of anyone else.
+
+- **Withdraw** burns aTokens and sends underlying assets to the user. If the user has active borrows, the health factor is checked *after* the burn to ensure the position remains solvent.
+
+- **Every operation follows the same rhythm:** update state first (settle interest), execute the action, update rates last (recalculate for new utilization). This pattern ensures consistency, prevents stale-data bugs, and makes idle reserves self-correcting.
+
+- **The protocol is permissionless but safe.** Anyone can interact at any time, but every action is validated against solvency constraints. You cannot create a position that puts the protocol at risk.
+
+These four operations, combined with the accounting primitives from previous chapters, form the core lending engine of Aave V3. The next chapter covers what happens when things go wrong: **liquidations**.

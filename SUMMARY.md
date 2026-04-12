@@ -13,24 +13,24 @@
 
 ## Core Protocol
 
-* [Chapter 1: The Architecture of Aave V3](chapter-1-architecture/README.md)
-* [Chapter 2: Aave V3 Interest Rate Model](chapter-2-interest-rate-model/README.md)
-* [Chapter 3: Interest Rate Indexes and Scaled Balances](chapter-3-indexes-and-scaled-balances/README.md)
+* [Chapter 1: What is Aave V3](chapter-1-architecture/README.md)
+* [Chapter 2: Interest Rate Model](chapter-2-interest-rate-model/README.md)
+* [Chapter 3: Indexes and Scaled Balances](chapter-3-indexes-and-scaled-balances/README.md)
 * [Chapter 4: aTokens — Interest-Bearing Tokens](chapter-4-atokens/README.md)
 * [Chapter 5: Debt Tokens — Variable and Stable](chapter-5-debt-tokens/README.md)
-* [Chapter 6: Supply, Borrow, Repay, and Withdraw Flows](chapter-6-supply-borrow-repay-withdraw/README.md)
+* [Chapter 6: Supply, Borrow, Repay, and Withdraw](chapter-6-supply-borrow-repay-withdraw/README.md)
+* [Chapter 7: Contract Architecture](chapter-7-contract-architecture/README.md)
 
 ## Risk and Advanced Features
 
-* [Chapter 7: Collateral, Liquidations, and the Health Factor](chapter-7-liquidations/README.md)
-* [Chapter 8: Flash Loans](chapter-8-flash-loans/README.md)
-* [Chapter 9: E-Mode (Efficiency Mode)](chapter-9-emode/README.md)
-* [Chapter 10: Isolation Mode](chapter-10-isolation-mode/README.md)
-
-* [Chapter 13: Siloed Borrowing, Caps, and Repay with aTokens](chapter-13-risk-features/README.md)
+* [Chapter 8: Liquidations and the Health Factor](chapter-7-liquidations/README.md)
+* [Chapter 9: Flash Loans](chapter-8-flash-loans/README.md)
+* [Chapter 10: E-Mode (Efficiency Mode)](chapter-9-emode/README.md)
+* [Chapter 11: Isolation Mode](chapter-10-isolation-mode/README.md)
+* [Chapter 12: Caps, Siloed Borrowing, and Repay with aTokens](chapter-13-risk-features/README.md)
 
 ## Protocol Economics and Governance
 
-* [Chapter 11: Reserves, Treasury, and Protocol Revenue](chapter-11-reserves-and-treasury/README.md)
-* [Chapter 12: Governance and Admin Controls](chapter-12-governance/README.md)
-* [Chapter 14: L2 Deployments, PriceOracleSentinel, and GHO](chapter-14-l2-and-gho/README.md)
+* [Chapter 13: Reserves, Treasury, and Protocol Revenue](chapter-11-reserves-and-treasury/README.md)
+* [Chapter 14: Governance and Admin Controls](chapter-12-governance/README.md)
+* [Chapter 15: L2 Deployments, PriceOracleSentinel, and GHO](chapter-14-l2-and-gho/README.md)

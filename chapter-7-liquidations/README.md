@@ -1,590 +1,296 @@
 # Chapter 7: Collateral, Liquidations, and the Health Factor
 
-Aave V3 is a lending protocol. Lending protocols survive because borrowers must always post more collateral than they borrow. But asset prices move. If a borrower's collateral loses value --- or their debt grows --- the protocol needs a mechanism to close out the position before it becomes insolvent. That mechanism is **liquidation**.
+Lending protocols exist because they promise lenders one thing: you will get your money back, plus interest. But Aave lends to anonymous borrowers with no credit checks, no legal recourse, and no collection agencies. The only thing protecting lenders is **overcollateralization** --- borrowers must lock up more value than they borrow.
 
-This chapter covers the risk parameters that define borrowing limits, the health factor that measures account solvency, and the liquidation flow that enforces it all.
+The problem is that collateral values change. ETH can drop 20% in a day. If a borrower's collateral falls below their debt, the protocol has a hole in its balance sheet --- lenders cannot be made whole. This is called **bad debt**, and it is the existential threat to any lending protocol.
+
+Liquidation is the mechanism that prevents bad debt. When a borrower's position becomes risky, the protocol allows anyone to step in, repay part of the debt, and claim the borrower's collateral at a discount. The borrower loses some collateral. The liquidator earns a profit. And the protocol stays solvent.
+
+This chapter explains the economics of how that system works: the risk parameters that define borrowing limits, the health factor that measures safety, and the liquidation process that enforces it all.
 
 ---
 
-## 1. Risk Parameters per Asset
+## 1. Risk Parameters: The Economic Levers
 
-Every asset listed on Aave V3 has a set of risk parameters configured by governance. These parameters control how much you can borrow against the asset and what happens when things go wrong.
+Every asset on Aave has three key risk parameters set by governance. Together, they define the economic boundaries of borrowing and liquidation.
 
-### Loan-to-Value (LTV)
+### Loan-to-Value (LTV): Your Borrowing Power
 
-The LTV is the maximum percentage of collateral value that a user can borrow. If ETH has an LTV of 80%, then for every $1,000 of ETH supplied, you can borrow up to $800.
+LTV answers a simple question: for every dollar of this asset you supply, how much can you borrow?
 
-LTV is used when **opening** a position. It determines the initial borrowing limit.
+If ETH has an LTV of 80%, then $10,000 of ETH collateral lets you borrow up to $8,000. The remaining $2,000 is your margin of safety --- the protocol's buffer against price drops.
 
-### Liquidation Threshold
+Riskier assets get lower LTVs. Governance sets these based on liquidity, volatility, and market depth:
 
-The liquidation threshold is the collateral ratio at which a position becomes liquidatable. It is always higher than the LTV. If ETH has a liquidation threshold of 82.5%, then a position backed by ETH becomes liquidatable when the debt exceeds 82.5% of the collateral value.
+| Asset | LTV  | What It Means |
+|-------|------|---------------|
+| WETH  | 80%  | Well-understood, deep liquidity --- generous borrowing power |
+| WBTC  | 70%  | Cross-chain bridge risk warrants more caution |
+| USDC  | 86.5%| Very stable, tight peg --- high borrowing power |
+| DAI   | 75%  | Algorithmic elements add slight risk |
 
-The gap between LTV and liquidation threshold creates a **safety buffer**. You can borrow up to 80% of your collateral, but you won't be liquidated until your debt reaches 82.5% of collateral value. This gives borrowers time to react to price movements.
+LTV is only checked when **opening or increasing** a position. Once you have borrowed, your position is not liquidated until it crosses a different line.
 
-### Liquidation Bonus
+### Liquidation Threshold: The Safety Line
 
-The liquidation bonus is the extra collateral a liquidator receives as a reward for performing the liquidation. If the liquidation bonus is 5%, the liquidator gets $105 worth of collateral for every $100 of debt they repay.
+The liquidation threshold is the point at which your position becomes liquidatable. It is always higher than the LTV, creating a buffer zone.
 
-This is the economic incentive that keeps the liquidation market competitive. Without it, nobody would bother liquidating underwater positions.
+With ETH's LTV at 80% and liquidation threshold at 82.5%, you can borrow up to 80% of your collateral's value, but you are not liquidated until your debt reaches 82.5% of collateral value. That 2.5% gap is your breathing room --- time to add collateral or repay debt as prices move against you.
+
+Why not make them the same number? Because prices are volatile. If you could borrow right up to the liquidation line, any small price fluctuation would trigger immediate liquidation. The gap gives borrowers a realistic chance to manage their positions.
+
+### Liquidation Bonus: The Incentive for Liquidators
+
+Liquidation does not happen automatically. Someone has to monitor every position on the protocol, detect when one crosses the threshold, submit a transaction, and pay gas. That someone is a **liquidator**, and they need a reason to do this work.
+
+The liquidation bonus is that reason. It is the discount at which liquidators buy collateral. If the liquidation bonus is 5%, a liquidator who repays $10,000 of debt receives $10,500 worth of collateral. That $500 profit comes directly from the borrower's collateral --- the borrower loses more than their debt was worth.
+
+Higher-risk assets have higher bonuses because they need to attract liquidators even when the market is chaotic:
+
+| Asset | LTV  | Liq. Threshold | Liq. Bonus | Buffer Zone |
+|-------|------|----------------|------------|-------------|
+| WETH  | 80%  | 82.5%          | 5%         | 2.5%        |
+| WBTC  | 70%  | 75%            | 10%        | 5%          |
+| USDC  | 86.5%| 89%            | 4.5%       | 2.5%        |
+| DAI   | 75%  | 80%            | 5%         | 5%          |
+
+*Note: actual values vary by deployment and governance decisions. These are illustrative.*
 
 ### Liquidation Protocol Fee
 
-A portion of the liquidation bonus is redirected to the Aave treasury. If the liquidation bonus is 5% and the protocol fee is 10% of the bonus, then the liquidator gets 4.5% extra and the treasury gets 0.5%.
-
-### How These Are Stored
-
-All risk parameters are packed into a single `uint256` bitmap in the reserve configuration. This is a gas optimization --- instead of storing each parameter in a separate storage slot, Aave encodes everything into one word using bitwise operations.
-
-```solidity
-// From ReserveConfiguration.sol
-
-uint256 internal constant LTV_MASK =                       0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF0000;
-uint256 internal constant LIQUIDATION_THRESHOLD_MASK =     0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF0000FFFF;
-uint256 internal constant LIQUIDATION_BONUS_MASK =         0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF0000FFFFFFFF;
-
-function getLtv(
-    DataTypes.ReserveConfigurationMap memory self
-) internal pure returns (uint256) {
-    return self.data & ~LTV_MASK;
-}
-
-function getLiquidationThreshold(
-    DataTypes.ReserveConfigurationMap memory self
-) internal pure returns (uint256) {
-    return (self.data & ~LIQUIDATION_THRESHOLD_MASK) >> LIQUIDATION_THRESHOLD_START_BIT_POSITION;
-}
-
-function getLiquidationBonus(
-    DataTypes.ReserveConfigurationMap memory self
-) internal pure returns (uint256) {
-    return (self.data & ~LIQUIDATION_BONUS_MASK) >> LIQUIDATION_BONUS_START_BIT_POSITION;
-}
-```
-
-Each parameter occupies a specific bit range within the `uint256`. Reading a value means applying a bitmask and shifting. Writing means clearing the old bits and setting the new ones. This pattern repeats throughout the protocol.
-
-Typical values for major assets:
-
-| Asset | LTV  | Liquidation Threshold | Liquidation Bonus |
-|-------|------|-----------------------|-------------------|
-| WETH  | 80%  | 82.5%                 | 5%                |
-| WBTC  | 70%  | 75%                   | 10%               |
-| USDC  | 86.5%| 89%                   | 4.5%              |
-| DAI   | 75%  | 80%                   | 5%                |
-
-Note: actual values vary by deployment and governance decisions. These are illustrative.
+A portion of the liquidation bonus is redirected to the Aave treasury. If the bonus is 5% and the protocol fee is 10% of the bonus, the liquidator keeps 4.5% and the treasury takes 0.5%. This turns every liquidation into a small revenue event for the protocol.
 
 ---
 
-## 2. The Health Factor
+## 2. The Health Factor: One Number to Rule Them All
 
 <video src="../animations/final/health_factor.webm" controls autoplay loop muted playsinline style="width:100%;max-width:800px;border-radius:8px;margin:20px 0"></video>
 
-The health factor (HF) is the single number that tells you whether an account is solvent. It is defined as:
+The health factor (HF) is the single most important number for any borrower. It condenses the entire safety of a position into one metric:
 
-**Health Factor = Sum(collateral × price × liquidationThreshold) / totalDebt**
+**Health Factor = (Total Collateral x Weighted Liquidation Threshold) / Total Debt**
 
-Where the sum runs over all assets the user has enabled as collateral.
+- **HF >= 1**: You are safe. Nobody can liquidate you.
+- **HF < 1**: You are liquidatable. Anyone can close part of your position.
 
-**When HF >= 1**, the position is healthy. The user cannot be liquidated.
+The health factor moves for two reasons: your collateral changes in value (price moves), or your debt grows (interest accrues). Both are constantly happening, which is why the health factor is a living number.
 
-**When HF < 1**, the position is liquidatable. Anyone can call `liquidationCall()` to partially or fully close the position.
+### Numerical Example: Watching the Health Factor Move
 
-### A Numerical Example
-
-Alice supplies **10 ETH** as collateral, where ETH is worth **$2,000**. ETH has a liquidation threshold of **82.5%**.
-
+Alice supplies **10 ETH** as collateral (ETH = $2,000, liquidation threshold = 82.5%).
 She borrows **$15,000 USDC**.
 
-Her initial health factor:
+**Day 1 --- Everything is fine:**
 
 ```
-HF = (10 × $2,000 × 0.825) / $15,000
-   = $16,500 / $15,000
-   = 1.10
+Collateral value:  10 x $2,000 = $20,000
+Adjusted collateral: $20,000 x 0.825 = $16,500
+Health Factor:     $16,500 / $15,000 = 1.10
 ```
 
-Alice is safe with a health factor of 1.10.
+Alice has a 10% safety margin. She sleeps well.
 
-Now ETH drops to **$1,800**:
+**Day 2 --- ETH drops to $1,900:**
 
 ```
-HF = (10 × $1,800 × 0.825) / $15,000
-   = $14,850 / $15,000
-   = 0.99
+Adjusted collateral: 10 x $1,900 x 0.825 = $15,675
+Health Factor:     $15,675 / $15,000 = 1.045
 ```
 
-The health factor is now below 1. Alice's position is liquidatable.
+Getting uncomfortable, but still safe.
 
-Note that Alice borrowed $15,000 against $20,000 of collateral (75% LTV), which was within the 80% LTV limit. But when the price dropped, her collateral-to-debt ratio fell below the 82.5% liquidation threshold. The safety buffer between LTV and liquidation threshold gave her some breathing room, but not enough.
+**Day 3 --- ETH drops to $1,800:**
+
+```
+Adjusted collateral: 10 x $1,800 x 0.825 = $14,850
+Health Factor:     $14,850 / $15,000 = 0.99
+```
+
+Health factor is below 1. Alice is now liquidatable.
+
+Notice: Alice originally borrowed at 75% LTV ($15,000 / $20,000), well within the 80% limit. The buffer between LTV (80%) and liquidation threshold (82.5%) gave her some protection, but a 10% price drop was enough to push her over the edge.
+
+### Weighted Averages for Multiple Collateral Types
+
+If you supply multiple assets as collateral, the protocol computes a weighted average liquidation threshold. For example:
+
+- $10,000 in ETH (threshold: 82.5%) and $5,000 in USDC (threshold: 89%)
+- Weighted threshold: ($10,000 x 82.5% + $5,000 x 89%) / $15,000 = **84.67%**
+
+This blended threshold determines your health factor. More stable collateral in the mix raises your effective threshold and improves your health factor.
 
 ---
 
-## 3. The `GenericLogic.calculateUserAccountData()` Function
+## 3. The Liquidation Process: An Economic Transaction
 
-This is the function that computes everything needed to evaluate a user's position: total collateral value, total debt value, average LTV, average liquidation threshold, and the health factor.
+When a health factor drops below 1, a liquidation is not a penalty imposed by the protocol. It is an open economic opportunity. Anyone --- a bot, a DAO, an individual --- can execute it by calling `liquidationCall()` on the Pool contract. No whitelist, no permissions.
 
-The logic lives in `GenericLogic.sol` and is called during borrows, withdrawals, and liquidations --- any operation where the protocol needs to verify solvency.
+The liquidator specifies:
+- Which collateral to seize from the borrower
+- Which debt to repay on their behalf
+- How much debt to cover
+- Whether to receive the collateral as aTokens (to keep earning yield) or as the underlying asset
 
-```solidity
-function calculateUserAccountData(
-    mapping(address => DataTypes.ReserveData) storage reservesData,
-    mapping(uint256 => address) storage reservesList,
-    mapping(uint8 => DataTypes.EModeCategory) storage eModeCategories,
-    DataTypes.CalculateUserAccountDataParams memory params
-) internal view returns (
-    uint256,  // totalCollateralBase
-    uint256,  // totalDebtBase
-    uint256,  // avgLtv
-    uint256,  // avgLiquidationThreshold
-    uint256,  // healthFactor
-    bool      // hasZeroLtvCollateral
-) {
+### What Happens Step by Step
+
+**1. Check eligibility.** The protocol recalculates the borrower's health factor using current oracle prices. If HF >= 1, the liquidation reverts --- the position is healthy.
+
+**2. Determine how much can be liquidated** (the close factor --- see next section).
+
+**3. Calculate collateral to seize.** The protocol converts the debt amount to collateral value using oracle prices, then adds the liquidation bonus:
+
+```
+Collateral seized = (Debt repaid / Collateral price) x (1 + Bonus%)
 ```
 
-The function iterates through every active reserve, checking whether the user has a balance (collateral or debt) in each one:
+If the borrower does not have enough collateral to cover the full bonus, the available collateral sets the limit and the debt repaid is reduced accordingly.
 
-```solidity
-while (vars.i < params.reservesCount) {
-    if (!userConfig.isUsingAsReserveOrBorrowing(vars.i)) {
-        unchecked { ++vars.i; }
-        continue;
-    }
+**4. Execute the swap.** The liquidator sends debt tokens to the protocol (burning the borrower's debt). The protocol transfers collateral from the borrower to the liquidator. If a protocol fee applies, a small portion of the bonus goes to the Aave treasury.
 
-    // Load reserve data
-    vars.currentReserveAddress = reservesList[vars.i];
-    DataTypes.ReserveData storage currentReserve = reservesData[vars.currentReserveAddress];
-    DataTypes.ReserveConfigurationMap memory currentConfig = currentReserve.configuration;
+**5. Update interest rates** for both the collateral and debt reserves to reflect the changed utilization.
 
-    // Get the asset price from the oracle
-    vars.assetPrice = IPriceOracleGetter(params.oracle).getAssetPrice(vars.currentReserveAddress);
-    vars.assetUnit = 10 ** currentConfig.getDecimals();
-```
-
-For each asset, the function accumulates collateral and debt in the **base currency** (usually USD or ETH, depending on the deployment):
-
-```solidity
-    // If the user is using this asset as collateral
-    if (userConfig.isUsingAsCollateral(vars.i)) {
-        vars.userBalanceInBaseCurrency = _getUserBalanceInBaseCurrency(
-            user, currentReserve, vars.assetPrice, vars.assetUnit
-        );
-
-        vars.totalCollateralInBaseCurrency += vars.userBalanceInBaseCurrency;
-
-        if (vars.liquidationThreshold != 0) {
-            vars.avgLtv += vars.userBalanceInBaseCurrency * vars.ltv;
-            vars.avgLiquidationThreshold +=
-                vars.userBalanceInBaseCurrency * vars.liquidationThreshold;
-        } else {
-            vars.hasZeroLtvCollateral = true;
-        }
-    }
-
-    // If the user has debt in this asset
-    if (userConfig.isBorrowing(vars.i)) {
-        vars.totalDebtInBaseCurrency += _getUserDebtInBaseCurrency(
-            user, currentReserve, vars.assetPrice, vars.assetUnit
-        );
-    }
-```
-
-After the loop, the weighted averages are finalized and the health factor is computed:
-
-```solidity
-    // Compute weighted average LTV and liquidation threshold
-    vars.avgLtv = vars.totalCollateralInBaseCurrency != 0
-        ? vars.avgLtv / vars.totalCollateralInBaseCurrency
-        : 0;
-    vars.avgLiquidationThreshold = vars.totalCollateralInBaseCurrency != 0
-        ? vars.avgLiquidationThreshold / vars.totalCollateralInBaseCurrency
-        : 0;
-
-    // Health factor
-    vars.healthFactor = (vars.totalDebtInBaseCurrency == 0)
-        ? type(uint256).max
-        : (vars.totalCollateralInBaseCurrency.percentMul(vars.avgLiquidationThreshold))
-            .wadDiv(vars.totalDebtInBaseCurrency);
-```
-
-A few things to note:
-
-- If the user has **no debt**, the health factor is set to `type(uint256).max` --- effectively infinity. You cannot liquidate someone who has not borrowed.
-- The average LTV and liquidation threshold are **weighted by collateral value**. If you supply $10,000 of ETH (82.5% threshold) and $5,000 of USDC (89% threshold), your average threshold is not a simple average of 82.5% and 89%. It is weighted: `(10000 * 82.5 + 5000 * 89) / 15000 = 84.67%`.
-- The function handles E-Mode adjustments, which can override the per-asset risk parameters when assets are in the same category (covered in Chapter 9).
+After liquidation, the borrower has less collateral but also less debt. Their health factor typically improves, often rising back above 1.
 
 ---
 
-## 4. The Liquidation Flow
+## 4. The Close Factor: Partial vs. Full Liquidation
 
-When a user's health factor drops below 1, anyone can call `Pool.liquidationCall()`:
+The close factor determines what fraction of a borrower's debt can be liquidated in a single call. Aave V3 uses two tiers:
 
-```solidity
-function liquidationCall(
-    address collateralAsset,    // which collateral to seize
-    address debtAsset,          // which debt to repay
-    address user,               // the user being liquidated
-    uint256 debtToCover,        // how much debt the liquidator wants to repay
-    bool receiveAToken          // receive aTokens or underlying?
-) external override;
-```
+| Health Factor Range | Close Factor | Rationale |
+|---------------------|-------------|-----------|
+| 0.95 to 1.0        | **50%**     | Position is slightly underwater. A partial liquidation should restore health, giving the borrower a chance to recover. |
+| Below 0.95          | **100%**    | Position is deeply underwater. Partial liquidation might not be enough. Allow full closure to prevent bad debt. |
 
-The caller (the liquidator) specifies:
-- Which collateral asset to seize from the underwater user
-- Which debt asset to repay on behalf of the user
-- How much debt to repay
-- Whether they want the seized collateral as aTokens or the underlying asset
+### Why 50% by Default?
 
-The actual logic is delegated to `LiquidationLogic.executeLiquidationCall()`. Here is the flow step by step.
+Partial liquidation is more borrower-friendly. After a liquidator repays half the debt and takes the corresponding collateral (plus bonus), the borrower's health factor usually jumps back above 1. The borrower still has a position and can choose to add collateral, repay more, or just ride it out.
 
-### Step 1: Validate the Position
+### Why 100% Below 0.95?
 
-First, the function fetches the user's account data and checks that the position is actually liquidatable:
+When a position is deeply underwater, a 50% liquidation might not restore the health factor above 1. The remaining position could become insolvent --- creating bad debt that harms lenders. Allowing full liquidation ensures the protocol can close out dangerous positions entirely.
 
-```solidity
-(
-    vars.userCollateralInBaseCurrency,
-    vars.userDebtInBaseCurrency,
-    ,
-    ,
-    vars.healthFactor,
-) = GenericLogic.calculateUserAccountData(
-    reservesData,
-    reservesList,
-    eModeCategories,
-    params
-);
-
-// Revert if the user is not liquidatable
-if (vars.healthFactor >= HEALTH_FACTOR_LIQUIDATION_THRESHOLD) {
-    revert Errors.HEALTH_FACTOR_NOT_BELOW_THRESHOLD;
-}
-```
-
-`HEALTH_FACTOR_LIQUIDATION_THRESHOLD` is `1e18` (1.0 in WAD format).
-
-### Step 2: Determine the Close Factor
-
-```solidity
-// If health factor is very low, allow full liquidation
-vars.closeFactor = vars.healthFactor > CLOSE_FACTOR_HF_THRESHOLD
-    ? DEFAULT_LIQUIDATION_CLOSE_FACTOR   // 50%
-    : MAX_LIQUIDATION_CLOSE_FACTOR;       // 100%
-```
-
-This is the close factor logic (discussed in detail in Section 5 below).
-
-### Step 3: Calculate Debt to Cover
-
-The liquidator may try to repay more than the close factor allows. The protocol caps it:
-
-```solidity
-vars.maxLiquidatableDebt = vars.userDebt.percentMul(vars.closeFactor);
-
-vars.actualDebtToLiquidate = debtToCover > vars.maxLiquidatableDebt
-    ? vars.maxLiquidatableDebt
-    : debtToCover;
-```
-
-### Step 4: Calculate Collateral to Seize
-
-This is where the liquidation bonus comes in:
-
-```solidity
-(vars.maxCollateralToLiquidate, vars.debtAmountNeeded) =
-    _calculateAvailableCollateralToLiquidate(
-        collateralReserve,
-        debtReserveCache,
-        collateralAsset,
-        debtAsset,
-        vars.actualDebtToLiquidate,
-        vars.userCollateralBalance,
-        vars.liquidationBonus,
-        IPriceOracleGetter(params.priceOracle)
-    );
-```
-
-Inside `_calculateAvailableCollateralToLiquidate()`, the core formula is:
-
-```solidity
-// How much collateral corresponds to the debt being repaid, plus the bonus
-vars.baseCollateral = (debtToCover * debtAssetPrice * collateralAssetUnit)
-    / (collateralPrice * debtAssetUnit);
-
-vars.maxCollateralToLiquidate = vars.baseCollateral.percentMul(liquidationBonus);
-```
-
-The liquidation bonus is stored as `10000 + bonus_bps`. For a 5% bonus, the stored value is `10500`. So `percentMul(10500)` multiplies by 1.05 --- the liquidator gets 5% more collateral than the debt is worth.
-
-If the user does not have enough collateral to cover the full amount (including bonus), the calculation is reversed: the available collateral determines how much debt can actually be repaid.
-
-### Step 5: Execute the Liquidation
-
-With the amounts determined, the protocol executes several state changes:
-
-```solidity
-// Burn the liquidated user's debt tokens
-_burnDebtTokens(params, vars);
-
-// Handle collateral: either transfer aTokens or withdraw underlying
-if (params.receiveAToken) {
-    // Transfer aTokens from the liquidated user to the liquidator
-    _liquidateATokens(...);
-} else {
-    // Burn aTokens and send underlying to the liquidator
-    _burnCollateralATokens(...);
-}
-
-// Deduct the liquidation protocol fee (if any)
-if (vars.liquidationProtocolFeeAmount != 0) {
-    // Mint aTokens to the treasury for the fee amount
-    ...
-}
-
-// Update interest rates for both the collateral and debt reserves
-```
-
-The liquidated user ends up with less collateral but also less debt. The liquidator ends up with the seized collateral (worth more than the debt they repaid, thanks to the bonus). The protocol may take a small fee.
+Consider: if HF = 0.80 and you only liquidate 50% of the debt, the health factor after liquidation might still be below 1, requiring another liquidation. With 100%, a single liquidator can clean up the entire position.
 
 ---
 
-## 5. The Close Factor
+## 5. The Liquidation Economy
 
-The close factor determines what fraction of a borrower's debt can be liquidated in a single call.
+### Where the Money Flows
 
-In Aave V3, the default close factor is **50%**. This means a liquidator can repay at most half of the borrower's total debt in a single `liquidationCall()`.
+A complete liquidation involves three parties. Here is how the economics break down with a 5% liquidation bonus and 10% protocol fee on the bonus:
 
-The 50% limit exists for a reason: it gives the borrower a chance to recover. After a partial liquidation, the borrower's health factor typically improves (because the collateral seized is proportional, but the debt reduction improves the ratio). The borrower can then add collateral or repay debt to avoid further liquidation.
-
-However, when the health factor drops very low, partial liquidation might not be enough to protect the protocol. In Aave V3, when the health factor falls below the **`CLOSE_FACTOR_HF_THRESHOLD`** (approximately 0.95), the close factor jumps to **100%**.
-
-```solidity
-uint256 constant CLOSE_FACTOR_HF_THRESHOLD = 0.95e18;
-uint256 constant DEFAULT_LIQUIDATION_CLOSE_FACTOR = 0.5e4;  // 50%
-uint256 constant MAX_LIQUIDATION_CLOSE_FACTOR = 1e4;         // 100%
+```
+Liquidator repays:       $10,000 of debt (in USDC)
+Liquidator receives:     $10,450 of collateral (in ETH)
+   -> $10,000 base value + $450 profit (4.5% net bonus)
+Aave treasury receives:  $50 of collateral (0.5%, as aTokens)
+Borrower loses:          $10,500 of collateral total
+Borrower's debt reduced: $10,000
 ```
 
-This means:
-- **HF between 0.95 and 1.0**: liquidator can cover up to 50% of the debt
-- **HF below 0.95**: liquidator can cover up to 100% of the debt
+The borrower is the one paying for the entire operation through lost collateral. The liquidator profits. The protocol takes a cut. Lenders are protected because the debt is repaid.
 
-The 100% close factor is a safeguard against bad debt. If a position is deeply underwater, a 50% liquidation might not bring the health factor back above 1, and the remaining position could become insolvent. Allowing full liquidation ensures the protocol can close out dangerous positions entirely.
+### The Competitive Landscape
+
+Liquidation on Aave is a competitive market. Hundreds of bots monitor every position in real time, racing to liquidate the moment a health factor crosses 1. This competition is healthy for the protocol --- it means positions are liquidated quickly, minimizing the chance of bad debt.
+
+The competition takes several forms:
+
+**Priority Gas Auctions (PGA).** Bots bid up gas prices to get their liquidation transaction included first. The winner captures the liquidation bonus; the losers waste gas.
+
+**Flash loan liquidations.** Liquidators do not need capital. They flash loan the debt asset, execute the liquidation, sell the seized collateral, repay the flash loan, and pocket the difference --- all in a single transaction. This dramatically lowers the barrier to entry.
+
+**MEV and block builders.** Sophisticated liquidators work with block builders to guarantee their transaction lands in the right position within a block. Some use private mempools to avoid being front-run.
+
+The result: healthy positions are almost never at risk of bad debt because the moment they become liquidatable, someone is there to clean them up. The liquidation bonus ensures this market stays active even during high-volatility periods.
 
 ---
 
-## 6. Liquidation Bonus and Protocol Fee
+## 6. Oracle Dependency
 
-### The Liquidation Bonus
+The entire liquidation system depends on accurate price data. If prices are wrong, healthy positions could be wrongly liquidated, or insolvent positions could go unchecked.
 
-The liquidation bonus is the economic engine of the liquidation market. It creates a direct financial incentive for liquidators to monitor positions and act quickly.
+Aave V3 uses **Chainlink price feeds** as its primary oracle source, wrapped in an `AaveOracle` contract that provides:
 
-The bonus is expressed in basis points relative to the base. A liquidation bonus of `10500` means the liquidator receives 105% of the debt value in collateral --- a 5% profit margin.
+- **Base currency optimization**: If the asset is the base currency itself (e.g., USD on mainnet), return the unit price directly --- no oracle call needed.
+- **Fallback mechanism**: If Chainlink returns zero or a negative price, fall back to a secondary oracle. This provides resilience against feed failures.
+- **Consistent precision**: Prices are returned with 8 decimal places, and all health factor calculations account for the decimal differences between assets.
 
-Example with a 5% bonus:
-- Liquidator repays $10,000 of USDC debt
-- Liquidator receives $10,500 worth of ETH collateral
-- Profit: $500
-
-This $500 is not free money from the protocol. It comes directly from the liquidated user's collateral. The user loses more collateral than the debt that was repaid.
-
-### The Liquidation Protocol Fee
-
-Aave V3 introduced a liquidation protocol fee --- a portion of the liquidation bonus that goes to the Aave treasury instead of the liquidator.
-
-```solidity
-function getLiquidationProtocolFee(
-    DataTypes.ReserveConfigurationMap memory self
-) internal pure returns (uint256) {
-    return (self.data & ~LIQUIDATION_PROTOCOL_FEE_MASK) >>
-        LIQUIDATION_PROTOCOL_FEE_START_BIT_POSITION;
-}
-```
-
-The fee is computed as a percentage of the total bonus. If the liquidation bonus is 5% and the protocol fee is 10% of the bonus:
-
-```
-Total collateral seized:       $10,500  (debt + 5% bonus)
-Protocol fee (10% of bonus):   $50      (10% of $500)
-Collateral to liquidator:      $10,450
-Collateral from user:          $10,500
-```
-
-This fee is implemented by minting additional aTokens to the treasury address during liquidation:
-
-```solidity
-if (vars.liquidationProtocolFeeAmount != 0) {
-    uint256 liquidationProtocolFeeAmount = vars.liquidationProtocolFeeAmount;
-    // The fee is minted as aTokens to the treasury
-    vars.collateralAToken.mint(
-        treasuryAddress,
-        treasuryAddress,
-        liquidationProtocolFeeAmount,
-        collateralReserveCache.nextLiquidityIndex
-    );
-}
-```
-
-The treasury accumulates aTokens over time from liquidation fees (along with other revenue sources covered in Chapter 11).
+The price flow during liquidation is straightforward: the liquidator's transaction triggers a health factor recalculation, which queries the oracle for every asset the borrower holds. If the resulting health factor is below 1, the liquidation proceeds. The entire check is synchronous and on-chain --- no off-chain components.
 
 ---
 
-## 7. Oracle Integration
+## 7. Complete Liquidation Example
 
-The entire liquidation system depends on accurate price data. If prices are wrong, healthy positions could be liquidated or insolvent positions could go unchecked. Aave V3 uses **Chainlink price feeds** as its primary oracle source.
+Let us walk through a full scenario with concrete numbers.
 
-### AaveOracle.sol
-
-The `AaveOracle` contract acts as a wrapper around individual Chainlink aggregators:
-
-```solidity
-contract AaveOracle is IAaveOracle {
-    mapping(address => AggregatorInterface) private assetsSources;
-    IPriceOracleGetter private _fallbackOracle;
-    address public immutable BASE_CURRENCY;
-    uint256 public immutable BASE_CURRENCY_UNIT;
-
-    function getAssetPrice(address asset) public view override returns (uint256) {
-        AggregatorInterface source = assetsSources[asset];
-
-        if (asset == BASE_CURRENCY) {
-            return BASE_CURRENCY_UNIT;
-        }
-
-        if (address(source) == address(0)) {
-            return _fallbackOracle.getAssetPrice(asset);
-        }
-
-        int256 price = source.latestAnswer();
-
-        if (price > 0) {
-            return uint256(price);
-        } else {
-            return _fallbackOracle.getAssetPrice(asset);
-        }
-    }
-}
-```
-
-A few important details:
-
-1. **Base currency optimization**: If the requested asset is the base currency itself (e.g., USD on USD-denominated deployments), the price is just `BASE_CURRENCY_UNIT` (e.g., `1e8`). No oracle call needed.
-
-2. **Fallback mechanism**: If the Chainlink feed returns zero, a negative value, or if no source is configured, the oracle falls back to `_fallbackOracle`. This provides a safety net against feed failures.
-
-3. **Price format**: Chainlink feeds typically return prices with 8 decimal places. The `BASE_CURRENCY_UNIT` matches this precision. All price calculations in `GenericLogic.calculateUserAccountData()` account for the decimal differences between asset prices and asset units.
-
-### How Prices Feed into Liquidation
-
-The flow is:
-
-1. `Pool.liquidationCall()` is called
-2. `LiquidationLogic.executeLiquidationCall()` delegates to `GenericLogic.calculateUserAccountData()`
-3. `calculateUserAccountData()` calls `AaveOracle.getAssetPrice()` for each active reserve
-4. Chainlink returns the latest price
-5. Collateral and debt values are computed in base currency
-6. Health factor is derived from these values
-7. If HF < 1, the liquidation proceeds
-
-The entire chain is synchronous and on-chain. There are no off-chain components in the price validation path --- everything happens within a single transaction.
-
----
-
-## 8. Complete Liquidation Example
-
-Let's walk through a full liquidation scenario with concrete numbers.
-
-### Initial Position
+### Setup
 
 Bob supplies **5 ETH** as collateral and borrows **6,000 USDC**.
 
-At the time of borrowing:
-- ETH price: **$2,000**
-- ETH LTV: **80%**
-- ETH liquidation threshold: **82.5%**
-- ETH liquidation bonus: **5%** (stored as `10500`)
-- Liquidation protocol fee: **10%** of the bonus
+| Parameter | Value |
+|-----------|-------|
+| ETH price | $2,000 |
+| ETH LTV | 80% |
+| ETH liquidation threshold | 82.5% |
+| ETH liquidation bonus | 5% |
+| Protocol fee | 10% of bonus |
 
-Bob's position:
-- Collateral value: 5 ETH * $2,000 = **$10,000**
-- Debt: **$6,000**
-- Health factor: ($10,000 * 0.825) / $6,000 = **$8,250 / $6,000 = 1.375**
-- Max borrowing power: $10,000 * 0.80 = $8,000 (he only used $6,000)
+Bob's initial position:
+- Collateral: 5 x $2,000 = **$10,000**
+- Max borrow: $10,000 x 80% = $8,000 (he only used $6,000)
+- Health factor: ($10,000 x 0.825) / $6,000 = **1.375**
 
 Bob is well within safe territory.
 
-### Price Drop
+### The Price Drop
 
-ETH drops to **$1,450**.
+ETH falls to **$1,450**. Bob's debt has accrued slightly to **$6,050**.
 
-Bob's updated position:
-- Collateral value: 5 ETH * $1,450 = **$7,250**
-- Debt: **$6,000** (plus some accrued interest, let's say **$6,050** total)
-- Health factor: ($7,250 * 0.825) / $6,050 = **$5,981.25 / $6,050 = 0.9886**
+- Collateral: 5 x $1,450 = **$7,250**
+- Health factor: ($7,250 x 0.825) / $6,050 = **$5,981 / $6,050 = 0.989**
 
-Bob's health factor is below 1. His position is liquidatable.
+Bob is liquidatable. Since 0.989 > 0.95, the close factor is 50%.
 
-Since 0.9886 > 0.95, the close factor is **50%**. A liquidator can repay up to half of Bob's debt.
+### The Liquidation
 
-### Liquidation
+Carol, a liquidator bot, repays **$3,025 of USDC** (50% of Bob's debt).
 
-Carol is a liquidator bot monitoring the mempool. She sees Bob's position is underwater and calls `liquidationCall()`.
+**Collateral calculation:**
 
-Carol decides to repay **$3,025 of USDC** (50% of Bob's debt).
+| Step | Calculation | Result |
+|------|-------------|--------|
+| Base collateral (debt value in ETH) | $3,025 / $1,450 | 2.086 ETH |
+| Add 5% bonus | 2.086 x 1.05 | 2.191 ETH |
+| Protocol fee (10% of bonus) | 0.105 x 0.10 | 0.010 ETH |
+| Carol receives | 2.191 - 0.010 | **2.181 ETH** |
 
-**Collateral to seize:**
+### After Liquidation
 
-```
-baseCollateral = ($3,025 * 1) / $1,450 = 2.0862 ETH
-collateralWithBonus = 2.0862 * 1.05 = 2.1905 ETH
-```
+| Party | Before | After | Change |
+|-------|--------|-------|--------|
+| **Bob (borrower)** | 5 ETH collateral, $6,050 debt | 2.809 ETH ($4,073), $3,025 debt | Lost 2.191 ETH, debt halved |
+| **Bob's health factor** | 0.989 | ($4,073 x 0.825) / $3,025 = **1.111** | Restored to health |
+| **Carol (liquidator)** | Paid $3,025 USDC | Received 2.181 ETH ($3,162) | **+$137 profit** |
+| **Aave treasury** | --- | 0.010 ETH ($15) as aTokens | Small fee collected |
 
-**Protocol fee:**
-
-```
-bonusCollateral = 2.1905 - 2.0862 = 0.1043 ETH
-protocolFee = 0.1043 * 0.10 = 0.01043 ETH
-```
-
-**What Carol actually receives:**
-
-```
-collateralToLiquidator = 2.1905 - 0.01043 = 2.1801 ETH
-```
-
-### Final State
-
-**Bob (liquidated user):**
-- Collateral: 5 - 2.1905 = **2.8095 ETH** (worth $4,073.78)
-- Debt: $6,050 - $3,025 = **$3,025**
-- New health factor: ($4,073.78 * 0.825) / $3,025 = **$3,360.87 / $3,025 = 1.111**
-
-Bob's position is healthy again. He lost 2.19 ETH of collateral but had half his debt cleared.
-
-**Carol (liquidator):**
-- Paid: $3,025 in USDC
-- Received: 2.1801 ETH (worth $3,161.15)
-- Profit: **$136.15**
-
-**Aave treasury:**
-- Received: 0.01043 ETH (worth $15.12) as aTokens
-
-**The system worked:** Bob's risky position was brought back to solvency. Carol earned a profit for performing a useful service. The protocol collected a small fee. No bad debt was created.
+The system worked: Bob's risky position was brought back to solvency. Carol earned a profit for performing a useful service. The protocol collected a fee. No bad debt was created. Lenders are whole.
 
 ---
 
 ## Key Takeaways
 
-1. **Risk parameters (LTV, liquidation threshold, liquidation bonus) are per-asset** and stored in a packed bitmap for gas efficiency.
+1. **Liquidation exists to protect lenders.** Borrowers post collateral, and if it loses value, liquidators step in to repay debt before the protocol becomes insolvent.
 
-2. **The health factor is a single number** that determines account solvency. It is a weighted ratio of liquidation-threshold-adjusted collateral to total debt.
+2. **Three risk parameters define the economic boundaries.** LTV sets borrowing power. The liquidation threshold is the safety line. The liquidation bonus is the incentive that makes the whole system work.
 
-3. **Liquidation is permissionless** --- anyone can call `liquidationCall()` when HF < 1. This creates a competitive market of liquidators.
+3. **The health factor is the single metric that matters.** It is a ratio of risk-adjusted collateral to debt. Above 1 means safe. Below 1 means liquidatable.
 
-4. **The close factor** limits how much can be liquidated at once (50%), but allows full liquidation when HF < 0.95 to prevent bad debt.
+4. **The close factor balances borrower protection with protocol safety.** At 50%, borrowers usually survive a liquidation. Below HF 0.95, the protocol prioritizes its own solvency with 100%.
 
-5. **Liquidation bonuses** incentivize liquidators. A portion goes to the protocol treasury.
+5. **Liquidation is a competitive market.** Flash loans, MEV, and gas auctions create a fast and efficient liquidation ecosystem. This is good for the protocol --- positions rarely linger in dangerous territory.
 
-6. **Chainlink oracles** provide the price data that drives the entire system. The AaveOracle wraps these feeds with fallback logic.
+6. **Accurate oracles are the foundation.** Every health factor calculation depends on Chainlink price feeds. Wrong prices mean wrong liquidations (or missed ones).
 
-7. **The safety buffer** between LTV and liquidation threshold gives borrowers room to react, but it is not unlimited. Users should monitor their health factor and maintain a comfortable margin.
+7. **The buffer between LTV and liquidation threshold is your margin of safety** --- but it is finite. Borrowers should monitor their health factor and maintain a comfortable margin above 1.

@@ -1,499 +1,262 @@
 # Chapter 13: Additional Risk Features
 
-Aave V3 has three risk-management features that are conceptually important but don't fit neatly into earlier chapters. Supply and borrow caps limit how much of any single asset can flow through the protocol. Siloed borrowing prevents risky assets from being co-borrowed with other assets. And repay-with-aTokens lets users unwind positions efficiently by burning their deposit tokens to cover debt. Each feature is small in code but significant in practice --- they are the guardrails that let Aave list hundreds of assets without exposing the entire protocol to the tail risk of any one of them.
+Aave V3 lists hundreds of assets across multiple chains. Each asset carries its own risk profile --- different liquidity depths, different volatility characteristics, different market microstructures. Listing an asset without guardrails would expose the entire protocol to the tail risk of any single token. This chapter covers three features that let governance fine-tune risk at the individual asset level: supply and borrow caps, siloed borrowing, and repay with aTokens.
+
+These features are small in scope but significant in practice. Caps prevent concentration risk. Siloed borrowing isolates exotic assets from the rest of the debt portfolio. And repay-with-aTokens provides an efficient mechanism for users to unwind positions. Together with Isolation Mode (Chapter 10) and E-Mode (Chapter 9), they form the complete toolkit that lets Aave list aggressively while managing risk conservatively.
 
 ---
 
-## 1. Supply and Borrow Caps
+## 1. Supply and Borrow Caps: Limiting Protocol Exposure
 
-### The Problem
+### The Problem They Solve
 
-Imagine Aave lists a new governance token, TOKEN-X, with $20M of on-chain liquidity. Without any limits, a whale could supply $500M of TOKEN-X as collateral, borrow $300M of USDC against it, and then manipulate TOKEN-X's price. Even without manipulation, the protocol would hold more TOKEN-X than the market could absorb in a liquidation. The result: bad debt.
+Imagine Aave lists a new governance token, TOKEN-X, with $20 million of on-chain liquidity. Without limits, a whale could supply $500 million of TOKEN-X as collateral, borrow $300 million of USDC against it, and then either manipulate TOKEN-X's price or simply wait for it to crash. Even without manipulation, the protocol would hold more TOKEN-X than the market could absorb in a liquidation. Liquidators could not sell the seized collateral without crashing the price further, creating a cascading liquidation spiral and ultimately bad debt that the protocol cannot recover.
 
-Supply and borrow caps solve this by putting hard limits on how much of any single asset the protocol can hold or lend out.
+Supply and borrow caps solve this by putting hard limits on how much of any single asset can flow through the protocol.
 
 ### What They Are
 
-- **Supply cap**: The maximum total amount of an asset that can be supplied to the protocol. Once the cap is reached, no more `supply()` calls succeed for that asset. Existing suppliers are unaffected --- they can still withdraw, earn interest, and use their positions normally.
+**Supply cap**: The maximum total amount of an asset that can be deposited into the protocol. Once reached, no new `supply()` calls succeed for that asset. Existing suppliers are completely unaffected --- they can still withdraw, earn interest, and use their positions as collateral.
 
-- **Borrow cap**: The maximum total amount of an asset that can be borrowed. Once the cap is reached, no new borrows succeed. Existing borrowers are unaffected --- they can still repay, and their interest continues to accrue normally.
+**Borrow cap**: The maximum total amount of an asset that can be borrowed. Once reached, no new borrows succeed. Existing borrowers are unaffected --- they continue accruing interest and can repay at any time.
 
-Both caps are denominated in **whole tokens** (not wei). A supply cap of 2,000,000 for USDC means 2 million USDC, regardless of USDC having 6 decimals.
+Both caps are denominated in whole tokens (not wei). A supply cap of 2,000,000 for USDC means 2 million USDC regardless of USDC having 6 decimals internally.
 
-### How They Are Stored
+### How Governance Sizes Caps
 
-Like most reserve parameters, caps are packed into the reserve configuration bitmap:
+Cap sizing is one of the most important risk management decisions in the protocol. The general framework:
 
-```solidity
-// From ReserveConfiguration.sol
-uint256 internal constant SUPPLY_CAP_MASK =
-    0xFFFFFFFFFFFFFFFFFFFFFFFFFF000000000FFFFFFFFFFFFFFFFFFFFFFFFFFFFF;
-uint256 internal constant SUPPLY_CAP_START_BIT_POSITION = 116;
-
-uint256 internal constant BORROW_CAP_MASK =
-    0xFFFFFFFFFFFFFFFFFFFFFFF000000000FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF;
-uint256 internal constant BORROW_CAP_START_BIT_POSITION = 80;
-
-function getSupplyCap(
-    DataTypes.ReserveConfigurationMap memory self
-) internal pure returns (uint256) {
-    return (self.data & ~SUPPLY_CAP_MASK) >> SUPPLY_CAP_START_BIT_POSITION;
-}
-
-function getBorrowCap(
-    DataTypes.ReserveConfigurationMap memory self
-) internal pure returns (uint256) {
-    return (self.data & ~BORROW_CAP_MASK) >> BORROW_CAP_START_BIT_POSITION;
-}
-```
-
-A cap value of 0 means "no cap" --- the asset is uncapped. This is the default for established assets like ETH and USDC on most deployments.
-
-### Validation: Supply Cap
-
-When a user calls `Pool.supply()`, the validation logic checks the supply cap in `ValidationLogic.validateSupply()`:
-
-```solidity
-function validateSupply(
-    DataTypes.ReserveCache memory reserveCache,
-    DataTypes.ReserveData storage reserve,
-    uint256 amount
-) internal view {
-    // ... other checks (active, not paused, not frozen) ...
-
-    uint256 supplyCap = reserveCache.reserveConfiguration.getSupplyCap();
-
-    require(
-        supplyCap == 0 ||
-            ((IAToken(reserveCache.aTokenAddress).scaledTotalSupply() +
-                uint256(reserve.accruedToTreasury)).rayMul(
-                    reserveCache.nextLiquidityIndex
-                ) + amount) <=
-            supplyCap * (10 ** reserveCache.reserveConfiguration.getDecimals()),
-        Errors.SUPPLY_CAP_EXCEEDED
-    );
-}
-```
-
-The key calculation:
-1. Get the current total supply: `scaledTotalSupply * liquidityIndex + accruedToTreasury`
-2. Add the new supply amount
-3. Compare against `supplyCap * 10^decimals` (converting from whole tokens to wei)
-4. If it exceeds the cap, revert with `SUPPLY_CAP_EXCEEDED`
-
-Note that `accruedToTreasury` is included. This is the treasury's unclaimed share of interest --- it counts toward the cap because it represents real supply that has not yet been minted as aTokens.
-
-### Validation: Borrow Cap
-
-Similarly, `ValidationLogic.validateBorrow()` checks the borrow cap:
-
-```solidity
-if (vars.reserveBorrowCap != 0) {
-    uint256 totalDebt =
-        reserveCache.currTotalStableDebt + reserveCache.currTotalVariableDebt;
-
-    unchecked {
-        require(
-            totalDebt + params.amount <= vars.reserveBorrowCap * (10 ** reserveCache.reserveConfiguration.getDecimals()),
-            Errors.BORROW_CAP_EXCEEDED
-        );
-    }
-}
-```
-
-The logic is simpler: total stable debt plus total variable debt plus the new borrow must not exceed the cap.
-
-### How Governance Sets Caps
-
-Caps are set through the PoolConfigurator, which is restricted to addresses with the `RISK_ADMIN` or `POOL_ADMIN` role:
-
-```solidity
-// PoolConfigurator.sol
-function setSupplyCap(
-    address asset,
-    uint256 newSupplyCap
-) external override onlyRiskOrPoolAdmins {
-    DataTypes.ReserveConfigurationMap memory currentConfig =
-        _pool.getConfiguration(asset);
-    currentConfig.setSupplyCap(newSupplyCap);
-    _pool.setConfiguration(asset, currentConfig);
-    emit SupplyCapChanged(asset, newSupplyCap);
-}
-
-function setBorrowCap(
-    address asset,
-    uint256 newBorrowCap
-) external override onlyRiskOrPoolAdmins {
-    DataTypes.ReserveConfigurationMap memory currentConfig =
-        _pool.getConfiguration(asset);
-    currentConfig.setBorrowCap(newBorrowCap);
-    _pool.setConfiguration(asset, currentConfig);
-    emit BorrowCapChanged(asset, newBorrowCap);
-}
-```
-
-### Practical Example
-
-Consider USDC on Aave V3 Ethereum:
-
-| Parameter | Value |
+| Factor | Impact on Cap |
 |---|---|
-| Supply Cap | 2,000,000,000 USDC |
-| Borrow Cap | 1,500,000,000 USDC |
+| On-chain liquidity depth | More liquid = higher cap allowed |
+| Token volatility | More volatile = lower cap needed |
+| Oracle reliability | Less reliable oracle = lower cap for safety |
+| Market cap and distribution | Concentrated holdings = lower cap |
+| Historical liquidation performance | Poor liquidation history = lower cap |
 
-And compare with a riskier asset like CRV:
+### Real-World Comparison
 
-| Parameter | Value |
-|---|---|
-| Supply Cap | 62,500,000 CRV |
-| Borrow Cap | 7,700,000 CRV |
+Consider how caps differ between a blue-chip asset and a riskier one:
 
-The CRV caps are much tighter because CRV has lower liquidity and higher volatility. If CRV's price crashed, Aave needs to ensure the total CRV position is small enough that liquidations can clear the debt without cascading losses.
+| Parameter | USDC | CRV |
+|---|---|---|
+| Supply Cap | 2,000,000,000 | 62,500,000 |
+| Borrow Cap | 1,500,000,000 | 7,700,000 |
+| Rationale | Deep liquidity, minimal volatility | Lower liquidity, higher volatility |
 
-### Important Edge Cases
+The CRV caps are roughly 30x tighter than USDC. If CRV's price crashes, Aave needs to ensure the total CRV position is small enough that liquidations can clear the debt without cascading losses. The USDC caps are generous because USDC is deep, stable, and easy to liquidate.
 
-**Caps do not force withdrawals.** If governance lowers a supply cap below the current total supply, existing positions are grandfathered in. No one is forced to withdraw. However, no new supply is accepted until the total drops below the new cap.
+### Important Behaviors
 
-**Caps are checked pre-operation.** The validation happens before the supply or borrow executes. If the operation would push the total over the cap, it reverts entirely --- there is no partial fill.
+**Caps do not force withdrawals.** If governance lowers a supply cap below the current total supply, existing positions are grandfathered. No one is forced to withdraw. But no new supply is accepted until the total naturally drops below the new cap (through withdrawals).
 
-**Caps interact with interest accrual.** Total supply and total debt grow over time as interest accrues. A reserve could theoretically breach its cap through interest alone, but this is by design --- the caps prevent new inflows, not organic growth of existing positions.
+**Caps are all-or-nothing.** If a supply would push the total over the cap, the entire transaction reverts. There is no partial fill.
+
+**Interest can exceed caps.** Total supply and total debt grow over time as interest accrues. A reserve could technically breach its cap through organic interest accumulation. This is by design --- caps prevent new inflows, not the natural growth of existing positions.
+
+**A cap of zero means uncapped.** This is the default for well-established assets on some deployments. Setting a cap to zero removes the restriction entirely.
+
+### Numerical Example
+
+Suppose the ETH borrow cap is set to 500,000 ETH. Currently, 495,000 ETH is borrowed.
+
+- Alice tries to borrow 6,000 ETH: **reverts** (495,000 + 6,000 = 501,000 > 500,000)
+- Bob tries to borrow 4,000 ETH: **succeeds** (495,000 + 4,000 = 499,000 < 500,000)
+- Interest accrues, pushing total debt to 500,200 ETH: **no problem** (organic growth is allowed)
+- Carol tries to borrow 1 ETH: **reverts** (total is already above cap)
 
 ---
 
-## 2. Siloed Borrowing
+## 2. Siloed Borrowing: Quarantining Risky Debt
 
-### The Problem
+### The Problem It Solves
 
-Some assets have unusual mechanics that create complex risk interactions when borrowed alongside other assets. Rebasing tokens change their balance automatically. Tokens with transfer fees lose value on every transfer. Tokens with low liquidity can be difficult to liquidate. If a user borrows one of these alongside a normal asset like USDC, the risk model for the combined position becomes much harder to reason about.
+Some assets have unusual mechanics that create complex risk interactions when borrowed alongside other assets. Rebasing tokens change their balance automatically. Tokens with transfer fees lose value on every transfer. Tokens with low or fragmented liquidity can be difficult to liquidate. When a user borrows one of these alongside a normal asset like USDC, the risk model for the combined position becomes much harder to reason about --- and much harder to liquidate safely.
 
-### What Siloed Borrowing Is
+### The Rule
 
 Siloed borrowing is a per-asset flag that says: **if you borrow this asset, it must be your only borrow.** You cannot hold any other borrows simultaneously.
 
 The restriction works in both directions:
-1. If you already have borrows and try to borrow a siloed asset, the transaction reverts.
-2. If you already have a siloed borrow and try to borrow anything else (siloed or not), the transaction reverts.
+1. If you already have any borrows and try to borrow a siloed asset --- the transaction reverts.
+2. If you already have a siloed borrow and try to borrow anything else (siloed or not) --- the transaction reverts.
+3. If you already have a siloed borrow, you can borrow **more of the same** siloed asset --- that is allowed.
 
-Your collateral is not affected. You can use any combination of collateral assets --- siloed borrowing only restricts the debt side of your position.
+Your collateral is not affected. You can use any combination of collateral assets. Siloed borrowing only restricts the debt side of your position.
 
-### How It Differs from Isolation Mode
+### Practical Scenarios
 
-This is one of the most commonly confused distinctions in Aave V3. The two features are orthogonal:
+**Scenario A: Starting with a siloed borrow**
 
-| Feature | What It Restricts | Direction | Example |
+| Step | Action | Result |
+|---|---|---|
+| 1 | Supply ETH as collateral | Succeeds |
+| 2 | Borrow 10,000 GHO (siloed asset) | Succeeds --- no existing borrows |
+| 3 | Borrow 5,000 USDC | **Reverts** --- already have a siloed borrow |
+| 4 | Borrow 5,000 more GHO | Succeeds --- same siloed asset |
+
+**Scenario B: Starting with a regular borrow**
+
+| Step | Action | Result |
+|---|---|---|
+| 1 | Supply ETH as collateral | Succeeds |
+| 2 | Borrow 5,000 USDC | Succeeds --- USDC is not siloed |
+| 3 | Borrow 10,000 GHO (siloed asset) | **Reverts** --- user already has borrows |
+| 4 | Borrow 3,000 DAI | Succeeds --- neither USDC nor DAI is siloed |
+
+### How Siloed Borrowing Differs from Isolation Mode and E-Mode
+
+This is one of the most commonly confused distinctions in Aave V3. The three features are orthogonal --- they restrict different things and can be active simultaneously:
+
+| Feature | What It Restricts | Which Side of the Position | Example |
 |---|---|---|---|
-| **Isolation Mode** | Which assets can be used as **collateral** | Collateral side | "TOKEN-X is isolated --- if it is your collateral, you can only borrow stablecoins" |
-| **Siloed Borrowing** | Which assets can be **borrowed together** | Debt side | "GHO is siloed --- if you borrow GHO, you cannot also borrow USDC" |
-| **E-Mode** | What **LTV and liquidation threshold** apply | Both sides | "In stablecoin E-Mode, your USDC collateral gets 97% LTV instead of 77%" |
+| **Isolation Mode** | Which assets can be used as collateral | Collateral side | "TOKEN-X is isolated --- if it is your only collateral, you can only borrow approved stablecoins, up to a debt ceiling" |
+| **Siloed Borrowing** | Which assets can be borrowed together | Debt side | "GHO is siloed --- if you borrow GHO, you cannot also borrow USDC" |
+| **E-Mode** | What LTV and liquidation parameters apply | Both sides | "In stablecoin E-Mode, your USDC collateral gets 97% LTV instead of 77%" |
 
-A user could theoretically be in Isolation Mode (using an isolated collateral) and borrowing a siloed asset simultaneously. The features compose independently.
-
-### How It Works in Code
-
-The siloed borrowing flag is stored in the reserve configuration bitmap:
-
-```solidity
-// From ReserveConfiguration.sol
-uint256 internal constant SILOED_BORROWING_MASK =
-    0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFBFFFFFFFFFFFFFFF;
-uint256 internal constant SILOED_BORROWING_START_BIT_POSITION = 62;
-
-function getSiloedBorrowing(
-    DataTypes.ReserveConfigurationMap memory self
-) internal pure returns (bool) {
-    return (self.data & ~SILOED_BORROWING_MASK) != 0;
-}
-```
-
-The enforcement happens in `ValidationLogic.validateBorrow()`. There are two checks:
-
-**Check 1: Is the user trying to borrow a siloed asset while already having other borrows?**
-
-```solidity
-if (params.reserveConfiguration.getSiloedBorrowing()) {
-    require(
-        !userConfig.isBorrowingAny(),
-        Errors.SILOED_BORROWING_VIOLATION
-    );
-}
-```
-
-If the asset being borrowed is siloed, the user must not have any existing borrows at all. `isBorrowingAny()` checks the user's configuration bitmap for any active borrow flags.
-
-**Check 2: Is the user trying to borrow any asset while already having a siloed borrow?**
-
-```solidity
-if (userConfig.isBorrowingAny()) {
-    // Find what the user is already borrowing
-    // Check if any of their current borrows are siloed
-    bool siloedBorrowingEnabled;
-    // ... iterate through user's borrows ...
-
-    require(
-        !siloedBorrowingEnabled || params.asset == siloedBorrowingAddress,
-        Errors.SILOED_BORROWING_VIOLATION
-    );
-}
-```
-
-This second check ensures that if the user already has a siloed borrow, the only thing they can borrow more of is that same siloed asset. They cannot add a different asset to their borrow position.
-
-The full check in context looks like this:
-
-```solidity
-// Simplified from ValidationLogic.validateBorrow()
-if (reserveConfiguration.getSiloedBorrowing()) {
-    // New borrow is a siloed asset --- user must have no other borrows
-    require(!userConfig.isBorrowingAny(), Errors.SILOED_BORROWING_VIOLATION);
-}
-
-if (userConfig.isBorrowingAny()) {
-    // User already has borrows --- check if any are siloed
-    (bool siloedBorrowingEnabled, address siloedBorrowingAddress) =
-        _getSiloedBorrowingState(userConfig, reservesData, reservesList);
-
-    if (siloedBorrowingEnabled) {
-        // User has a siloed borrow --- they can only borrow more of the same asset
-        require(
-            params.asset == siloedBorrowingAddress,
-            Errors.SILOED_BORROWING_VIOLATION
-        );
-    }
-}
-```
-
-### Governance Configuration
-
-Governance sets the siloed borrowing flag through the PoolConfigurator:
-
-```solidity
-function setSiloedBorrowing(
-    address asset,
-    bool newSiloed
-) external override onlyRiskOrPoolAdmins {
-    // Can only be set before any borrows have been taken
-    // (to avoid trapping existing borrowers in an invalid state)
-    DataTypes.ReserveConfigurationMap memory currentConfig =
-        _pool.getConfiguration(asset);
-
-    if (!newSiloed) {
-        require(
-            currentConfig.getSiloedBorrowing(),
-            Errors.INVALID_SILOED_BORROWING_STATE
-        );
-    }
-
-    currentConfig.setSiloedBorrowing(newSiloed);
-    _pool.setConfiguration(asset, currentConfig);
-    emit SiloedBorrowingChanged(asset, newSiloed);
-}
-```
-
-### Practical Scenario
-
-Consider a user who wants to borrow GHO (Aave's stablecoin), which is flagged as siloed:
-
-**Scenario A: Clean slate**
-1. User supplies ETH as collateral
-2. User borrows 10,000 GHO --- succeeds (no existing borrows, siloed check passes)
-3. User tries to borrow 5,000 USDC --- **reverts** with `SILOED_BORROWING_VIOLATION`
-4. User can borrow more GHO --- succeeds (same siloed asset)
-
-**Scenario B: Existing borrows**
-1. User supplies ETH as collateral
-2. User borrows 5,000 USDC --- succeeds (USDC is not siloed)
-3. User tries to borrow 10,000 GHO --- **reverts** with `SILOED_BORROWING_VIOLATION`
-4. User borrows 3,000 DAI --- succeeds (neither USDC nor DAI is siloed)
+A user could theoretically be in Isolation Mode (using an isolated collateral asset), borrowing a siloed asset, and be in E-Mode --- all at the same time. The features compose independently because they operate on different dimensions of the position.
 
 ### Why Not Just Use Isolation Mode?
 
-Isolation Mode restricts collateral. Siloed borrowing restricts debt. They address different threat vectors:
+Because they address fundamentally different threats:
 
-- **Isolation Mode** protects against: a risky collateral asset crashing and leaving bad debt. It limits the total debt that can be backed by the risky collateral.
+- **Isolation Mode** protects against collateral risk: a risky collateral asset crashing and leaving bad debt. It limits the total debt backed by that collateral.
 
-- **Siloed Borrowing** protects against: complex interactions between a risky borrowed asset and other borrows. For example, if a rebasing borrow changes its balance unexpectedly, having it isolated from other debts makes the position easier to reason about and liquidate.
+- **Siloed Borrowing** protects against debt interaction risk: complex behaviors (rebasing, transfer fees, unusual liquidation dynamics) of a borrowed asset contaminating a multi-asset debt position. It keeps the risky debt isolated from other debts.
+
+Think of it this way: Isolation Mode says "we don't fully trust this collateral." Siloed borrowing says "we don't fully trust this borrowed asset."
+
+### When Is Siloed Borrowing Used?
+
+Governance typically applies siloed borrowing to assets with one or more of these characteristics:
+
+- Rebasing mechanics (balance changes without transfers)
+- Transfer fees or taxes
+- Very low or fragmented liquidity
+- Non-standard ERC-20 behavior
+- Novel economic mechanisms that complicate liquidation
+
+GHO itself is a notable example --- it is siloed because its minting/burning mechanics differ from pool-based borrowing, and mixing GHO debt with regular pool debt in the same position would complicate the risk model.
 
 ---
 
-## 3. Repay with aTokens
+## 3. Repay with aTokens: Unwinding Positions Efficiently
 
 ### The Scenario
 
-You supplied 10,000 USDC to Aave and received 10,000 aUSDC. Later, you borrowed 5,000 USDC from Aave. Your position is now:
+You supplied 10,000 USDC to Aave and received 10,000 aUSDC. Later, you borrowed 5,000 USDC. Your position:
 
 - **Assets**: 10,000 aUSDC (earning interest)
 - **Liabilities**: 5,000 variable debt USDC (accruing interest)
 
-You want to close out the borrow. Normally, you would need to:
-1. Call `withdraw()` to convert aUSDC back to USDC
-2. Call `repay()` to send the USDC back to the protocol
+You want to close the borrow. The normal path requires two transactions:
+1. Withdraw 5,000 USDC (burn aUSDC, receive USDC)
+2. Repay 5,000 USDC (send USDC back to the protocol)
 
-This requires two transactions, two gas fees, and temporarily holding USDC in your wallet. It also reduces the protocol's liquidity during the brief window between withdraw and repay.
+This is wasteful. Two transactions, two gas fees, and you temporarily hold USDC in your wallet for no economic reason. The USDC leaves the protocol only to immediately re-enter it.
 
-Repay with aTokens collapses this into a single step.
+### The Efficient Alternative
 
-### How It Works
+Repay with aTokens collapses this into a single step. When you call `repayWithATokens()`:
 
-When you call `Pool.repayWithATokens()` (or `Pool.repay()` with the `useATokens` flag), the protocol:
+1. The protocol burns 5,000 of your aUSDC (reducing your supply position)
+2. The protocol burns 5,000 of your variable debt tokens (eliminating your debt)
+3. **No underlying USDC moves anywhere**
 
-1. Burns your aTokens (reducing your supply position)
-2. Burns your debt tokens (reducing your debt)
-3. Does **not** transfer any underlying tokens
+No tokens leave the protocol. No ERC-20 transfers of the underlying asset occur. The protocol simply cancels your deposit against your debt. It is an accounting operation, not a funds transfer.
 
-No underlying tokens move because they are already in the protocol. The aTokens represent a claim on underlying that is sitting in the aToken contract. By burning the aTokens, you are giving up that claim. By burning the debt tokens, the protocol forgives the debt. The underlying stays where it was --- it was backing both your supply and the pool's lending capacity.
+### Why No Tokens Need to Move
 
-### The Entry Point
+The underlying USDC was already sitting in the aToken contract. Your aUSDC represented a claim on that USDC. Your debt represented an obligation to return USDC. By burning both simultaneously, the claim and the obligation cancel out. The USDC stays in the pool, available for other borrowers.
 
-```solidity
-// Pool.sol
-function repayWithATokens(
-    address asset,
-    uint256 amount,
-    uint256 interestRateMode
-) external virtual override returns (uint256) {
-    return BorrowLogic.executeRepay(
-        _reserves,
-        _reservesList,
-        _usersConfig[msg.sender],
-        DataTypes.ExecuteRepayParams({
-            asset: asset,
-            amount: amount,
-            interestRateMode: DataTypes.InterestRateMode(interestRateMode),
-            onBehalfOf: msg.sender,
-            useATokens: true  // <-- The key flag
-        })
-    );
-}
-```
+### When This Is Especially Useful
 
-Note that `onBehalfOf` is always `msg.sender` when repaying with aTokens. You can only use your own aTokens to repay your own debt --- you cannot burn someone else's aTokens to repay your debt, or burn your aTokens to repay someone else's debt.
+**Unwinding leveraged positions.** If you have been looping (supply, borrow, re-supply, borrow more) to create a leveraged position, repay-with-aTokens is the cleanest way to peel off each layer. One transaction per layer instead of two.
 
-### Inside BorrowLogic.executeRepay()
+**When you do not hold the underlying.** If all your USDC is deposited as aUSDC, you may not have any USDC in your wallet. Repay-with-aTokens lets you repay without needing to withdraw first.
 
-The repay function branches based on the `useATokens` flag:
+**Gas savings.** One transaction instead of two, and no ERC-20 transfer or approval needed for the underlying token.
 
-```solidity
-function executeRepay(
-    mapping(address => DataTypes.ReserveData) storage reservesData,
-    mapping(uint256 => address) storage reservesList,
-    DataTypes.UserConfigurationMap storage userConfig,
-    DataTypes.ExecuteRepayParams memory params
-) external returns (uint256) {
-    DataTypes.ReserveData storage reserve = reservesData[params.asset];
-    DataTypes.ReserveCache memory reserveCache = reserve.cache();
-    reserve.updateState(reserveCache);
+### Example with Numbers
 
-    // Determine the actual payback amount
-    uint256 paybackAmount;
-    if (params.interestRateMode == DataTypes.InterestRateMode.STABLE) {
-        paybackAmount = IERC20(reserveCache.stableDebtTokenAddress)
-            .balanceOf(params.onBehalfOf);
-    } else {
-        paybackAmount = IERC20(reserveCache.variableDebtTokenAddress)
-            .balanceOf(params.onBehalfOf);
-    }
+Before repay-with-aTokens:
 
-    // If user specified less than full debt, use their amount
-    if (params.amount < paybackAmount) {
-        paybackAmount = params.amount;
-    }
+| Position | Amount |
+|---|---|
+| aUSDC balance | 10,000 |
+| Variable debt USDC | 5,000 |
+| Net position | 5,000 (net supplier) |
 
-    // Validate the repay
-    ValidationLogic.validateRepay(reserveCache, paybackAmount, params.onBehalfOf);
+After repaying 5,000 debt with aTokens:
 
-    // Burn debt tokens
-    if (params.interestRateMode == DataTypes.InterestRateMode.STABLE) {
-        IStableDebtToken(reserveCache.stableDebtTokenAddress).burn(
-            params.onBehalfOf, paybackAmount
-        );
-    } else {
-        IVariableDebtToken(reserveCache.variableDebtTokenAddress).burn(
-            params.onBehalfOf, paybackAmount, reserveCache.nextVariableBorrowIndex
-        );
-    }
+| Position | Amount |
+|---|---|
+| aUSDC balance | 5,000 |
+| Variable debt USDC | 0 |
+| Net position | 5,000 (net supplier) |
 
-    // *** HERE IS THE BRANCH ***
-    if (params.useATokens) {
-        // Burn aTokens instead of transferring underlying
-        IAToken(reserveCache.aTokenAddress).burn(
-            msg.sender,        // burn from the caller
-            reserveCache.aTokenAddress,  // underlying stays in the aToken contract
-            paybackAmount,
-            reserveCache.nextLiquidityIndex
-        );
-    } else {
-        // Normal repay: transfer underlying from user to aToken contract
-        IAToken(reserveCache.aTokenAddress).handleRepayment(
-            msg.sender, params.onBehalfOf, paybackAmount
-        );
-        IERC20(params.asset).safeTransferFrom(
-            msg.sender, reserveCache.aTokenAddress, paybackAmount
-        );
-    }
-
-    // Update interest rates
-    reserve.updateInterestRates(reserveCache, params.asset, 
-        params.useATokens ? 0 : paybackAmount,  // liquidityAdded
-        0                                         // liquidityRemoved
-    );
-
-    // If debt is fully repaid, clear the borrowing flag
-    if (
-        IStableDebtToken(reserveCache.stableDebtTokenAddress).balanceOf(params.onBehalfOf) == 0 &&
-        IVariableDebtToken(reserveCache.variableDebtTokenAddress).balanceOf(params.onBehalfOf) == 0
-    ) {
-        userConfig.setBorrowing(reserve.id, false);
-    }
-
-    emit Repay(params.asset, params.onBehalfOf, msg.sender, paybackAmount, params.useATokens);
-    return paybackAmount;
-}
-```
-
-### The Critical Detail: Interest Rate Update
-
-Notice the `updateInterestRates` call:
-
-```solidity
-reserve.updateInterestRates(reserveCache, params.asset,
-    params.useATokens ? 0 : paybackAmount,  // liquidityAdded
-    0                                         // liquidityRemoved
-);
-```
-
-When repaying normally, the underlying tokens physically move from the user to the aToken contract, so `liquidityAdded = paybackAmount`. The protocol has more liquidity available for borrows.
-
-When repaying with aTokens, no underlying moves. The pool's total liquidity decreases (aTokens burned) and total debt decreases (debt tokens burned) by the same amount. The net effect on utilization depends on the relative magnitudes, but no new liquidity enters the pool, so `liquidityAdded = 0`.
-
-### When Repay with aTokens Is Useful
-
-**1. Unwinding a position.** You want to close out a borrow without the hassle of withdrawing first. One transaction instead of two.
-
-**2. Self-deleveraging.** If you have been looping (supply, borrow, supply, borrow...) to create a leveraged position, repaying with aTokens is the cleanest way to unwind each layer.
-
-**3. Gas savings.** One transaction instead of two means roughly half the gas. No ERC-20 approval or transfer of the underlying token is needed.
-
-**4. When you do not hold the underlying.** If all your USDC is deposited in Aave as aUSDC, you may not have any USDC in your wallet. Repay with aTokens lets you repay without needing to withdraw first.
+The net position is identical. But the debt is gone and the user's position is simpler and cleaner.
 
 ### Limitations
 
-- **Same asset only.** You can only use aUSDC to repay USDC debt, aWETH to repay WETH debt, etc. You cannot use aUSDC to repay WETH debt.
+**Same asset only.** You can only use aUSDC to repay USDC debt, aWETH to repay WETH debt, and so on. You cannot cross assets --- aUSDC cannot repay WETH debt.
 
-- **Self-only.** You can only burn your own aTokens. Unlike normal `repay()`, where you can repay on behalf of another user, `repayWithATokens()` is restricted to `msg.sender`.
+**Self-only.** You can only burn your own aTokens to repay your own debt. Unlike normal `repay()`, where you can repay on behalf of another user, `repayWithATokens()` is restricted to the caller.
 
-- **Reduces collateral.** Burning aTokens reduces your supply position, which reduces your collateral (if that asset is enabled as collateral). If the repayment would leave you with insufficient collateral for your remaining borrows, the transaction reverts --- the health factor check still applies.
+**Reduces collateral.** Burning aTokens reduces your supply position, which may reduce your collateral. If the repayment would leave you with insufficient collateral for your remaining borrows, the transaction reverts --- the health factor check still applies. You cannot use this to put yourself into a liquidatable state.
+
+**No effect on pool liquidity.** Normal repayment adds liquidity to the pool (the underlying tokens flow back in). Repay-with-aTokens does not add liquidity --- it reduces both supply and debt by the same amount. This means the utilization rate may change differently than with a normal repay, which slightly affects interest rates.
+
+---
+
+## 4. The Economics of Risk Parameterization
+
+Before looking at how these features compose, it is worth stepping back to consider the economic trade-offs governance faces when setting these parameters.
+
+### The Listing Dilemma
+
+Every new asset listing is a trade-off between growth and risk. Listing an asset attracts new users and capital (more supply, more borrowing, more revenue). But every asset also introduces tail risk --- the chance of a black swan event (oracle manipulation, sudden liquidity collapse, smart contract exploit) that creates bad debt.
+
+Without caps and siloed borrowing, governance would face a binary choice: list the asset with full exposure (risky) or don't list it at all (missed revenue). With these features, governance can list assets on a spectrum:
+
+| Risk Tier | Configuration | Example |
+|---|---|---|
+| Tier 1: Blue chip | High caps, no silo, collateral-enabled, E-Mode eligible | ETH, USDC |
+| Tier 2: Established | Moderate caps, no silo, collateral-enabled | LINK, AAVE |
+| Tier 3: Volatile | Low caps, possibly siloed, collateral-enabled with low LTV | CRV, MKR |
+| Tier 4: Exotic | Very low caps, siloed, isolated collateral, high reserve factor | New governance tokens |
+
+This tiered approach means Aave can list hundreds of assets --- generating revenue and attracting users from every corner of DeFi --- while containing the risk of each asset to a level governance is comfortable with.
+
+### The Revenue Angle
+
+Risk parameters also interact with revenue. Higher reserve factors on risky assets mean the protocol earns more per dollar of borrowing from those assets. Higher liquidation protocol fees on volatile assets mean the protocol earns more during the market stress events that those assets are likely to trigger. The risk management system is simultaneously a revenue optimization system.
+
+---
+
+## 5. How These Features Work Together
+
+The three features in this chapter, combined with Isolation Mode (Chapter 10), E-Mode (Chapter 9), and the liquidation mechanism (Chapter 7), give governance a complete toolkit for managing risk at the individual asset level:
+
+| Risk Concern | Feature | How It Helps |
+|---|---|---|
+| Too much of one asset in the protocol | Supply cap | Hard limit on total deposits |
+| Too much borrowing of one asset | Borrow cap | Hard limit on total borrows |
+| Complex debt interactions | Siloed borrowing | Risky debt cannot mix with other debts |
+| Risky collateral | Isolation Mode | Limits debt backed by risky collateral |
+| Correlated assets needing better terms | E-Mode | Higher LTV for similar assets |
+| Inefficient position unwinding | Repay with aTokens | One-step debt cancellation |
+
+Each asset can be independently tuned: capped to limit exposure, siloed to prevent complex debt interactions, isolated to limit collateral risk, and grouped with similar assets in E-Mode for better capital efficiency. The result is a protocol flexible enough to list hundreds of assets while remaining robust against the tail risks of any individual one.
 
 ---
 
 ## Summary
 
-These three features fill important gaps in Aave V3's risk framework:
+Aave V3's additional risk features are targeted guardrails:
 
-| Feature | What It Does | Who Configures It | Where It Is Enforced |
-|---|---|---|---|
-| **Supply Cap** | Limits total deposits of an asset | Risk Admin / Pool Admin via PoolConfigurator | `ValidationLogic.validateSupply()` |
-| **Borrow Cap** | Limits total borrows of an asset | Risk Admin / Pool Admin via PoolConfigurator | `ValidationLogic.validateBorrow()` |
-| **Siloed Borrowing** | Restricts a risky asset to being the only borrow in a position | Risk Admin / Pool Admin via PoolConfigurator | `ValidationLogic.validateBorrow()` |
-| **Repay with aTokens** | Lets users burn aTokens to cover debt without transferring underlying | N/A (always available) | `BorrowLogic.executeRepay()` |
+- **Supply and borrow caps** prevent concentration risk by limiting how much of any single asset can enter the protocol. Governance sizes caps based on liquidity depth, volatility, and oracle reliability.
+- **Siloed borrowing** quarantines risky debt. Assets with unusual mechanics (rebasing, transfer fees, low liquidity) are flagged so they cannot be borrowed alongside other assets, simplifying risk modeling and liquidation.
+- **Repay with aTokens** is an efficiency feature: cancel your deposit against your debt in one step, with no token transfers. Useful for unwinding leveraged positions and saving gas.
 
-Together with Isolation Mode (Chapter 10), E-Mode (Chapter 9), and the liquidation mechanism (Chapter 7), these features give Aave governance fine-grained control over protocol risk. Each asset can be tuned independently: capped to limit exposure, siloed to prevent complex debt interactions, isolated to limit collateral risk, and grouped with similar assets in E-Mode to improve capital efficiency. The result is a protocol flexible enough to list hundreds of assets while remaining robust against the tail risks of any individual one.
+Together with Isolation Mode and E-Mode from earlier chapters, these features form a layered risk management system where each asset can be independently constrained according to its unique risk profile.

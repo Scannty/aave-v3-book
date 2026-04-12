@@ -1,337 +1,254 @@
 # Chapter 14: L2 Deployments, PriceOracleSentinel, and GHO
 
-Aave V3 is not a single deployment on Ethereum mainnet. It runs on Arbitrum, Optimism, Polygon, Avalanche, Base, and a growing list of other chains. The same contracts --- `Pool.sol`, `AToken.sol`, `VariableDebtToken.sol`, all the logic libraries --- are deployed on each chain with chain-specific parameters. From a user's perspective, borrowing ETH on Arbitrum looks identical to borrowing ETH on mainnet.
+Aave V3 is not a single deployment on Ethereum mainnet. It runs on Arbitrum, Optimism, Polygon, Avalanche, Base, and a growing list of other chains. The same contracts --- Pool, AToken, VariableDebtToken, all the logic libraries --- are deployed on each chain with chain-specific parameters. From a user's perspective, borrowing ETH on Arbitrum looks identical to borrowing ETH on mainnet.
 
-But L2 chains introduce a risk that doesn't exist on L1: **sequencer downtime**. And Aave V3 introduces something that doesn't exist in any predecessor: **GHO**, a stablecoin that is minted rather than borrowed from a pool.
+But L2 chains introduce a risk that does not exist on L1: **sequencer downtime**. And Aave V3 introduces something that does not exist in any predecessor: **GHO**, a stablecoin that is minted rather than borrowed from a pool.
 
-This chapter covers both.
-
----
-
-## 1. The Sequencer Problem
-
-Every optimistic rollup (Arbitrum, Optimism, Base) relies on a centralized sequencer to order transactions. If the sequencer goes down, users cannot submit transactions to the L2. No trades, no oracle updates, no collateral top-ups. The chain effectively freezes.
-
-This creates a specific danger for lending protocols. Consider the timeline:
-
-1. The Arbitrum sequencer goes offline at 2:00 PM. ETH is worth $2,000.
-2. During the downtime, ETH drops to $1,700 on mainnet. But the Arbitrum price feed is stale --- it still shows $2,000.
-3. The sequencer comes back online at 4:00 PM. Oracle prices update to $1,700.
-4. A liquidation bot immediately liquidates every position that became unhealthy during the two-hour window.
-
-The borrowers in step 4 had no chance to react. They couldn't add collateral or repay debt because the sequencer was down. Liquidating them instantly is unfair and could cause a cascade of unnecessary liquidations.
-
-Without protection, sequencer downtime turns into a mass liquidation event.
+This chapter covers both --- the sequencer risk problem and its solution, and GHO as an economic primitive that fundamentally changes how Aave generates revenue.
 
 ---
 
-## 2. PriceOracleSentinel
+## 1. The Sequencer Problem: Why L2s Need Special Protection
 
-Aave's solution is the `PriceOracleSentinel`. It acts as a gatekeeper that pauses certain operations when the sequencer has recently recovered, giving users time to manage their positions.
+Every optimistic rollup (Arbitrum, Optimism, Base) relies on a centralized sequencer to order transactions. The sequencer is, in practical terms, the single entity that processes transactions on the L2. If it goes down, users cannot submit transactions. No trades, no oracle updates, no collateral top-ups. The chain effectively freezes.
 
-### How It Knows the Sequencer Is Down
+This creates a specific and unfair danger for lending protocols.
 
-Chainlink provides a **Sequencer Uptime Feed** on each L2. This is a special oracle that reports whether the L2 sequencer is currently operational. The feed returns two values: a status (0 = up, 1 = down) and the timestamp of the last status change.
+### The Timeline of Harm
 
-`PriceOracleSentinel` wraps this feed through an `ISequencerOracle` interface:
+| Time | Event | Consequence |
+|---|---|---|
+| 2:00 PM | Arbitrum sequencer goes offline. ETH = $2,000 | Users cannot transact on Arbitrum |
+| 2:00 - 4:00 PM | ETH drops to $1,700 on mainnet and other markets | Arbitrum oracle still shows $2,000 (stale) |
+| 4:00 PM | Sequencer comes back online. Oracle updates to $1,700 | Hundreds of positions are suddenly underwater |
+| 4:00:01 PM | Liquidation bots liquidate every unhealthy position | Borrowers had zero chance to add collateral or repay |
 
-```solidity
-// From ISequencerOracle.sol
-interface ISequencerOracle {
-    function latestRoundData()
-        external
-        view
-        returns (
-            uint80 roundId,
-            int256 answer,      // 0 = sequencer is up, 1 = down
-            uint256 startedAt,  // timestamp of last status change
-            uint256 updatedAt,
-            uint80 answeredInRound
-        );
-}
-```
+The borrowers liquidated at 4:00:01 PM did nothing wrong. They may have had ample collateral buffer before the crash. They would have added collateral or repaid debt if they could have. But the sequencer was down --- they were locked out. Liquidating them instantly upon sequencer recovery is unfair and can cascade into a mass liquidation event.
+
+### Why This Does Not Happen on L1
+
+On Ethereum mainnet, if ETH drops from $2,000 to $1,700, users can react in real time. They can submit transactions to add collateral, repay debt, or close positions. The price decline and the ability to respond happen on the same chain at the same time. On an L2 with a down sequencer, the price decline happens externally while users are locked out locally.
+
+---
+
+## 2. PriceOracleSentinel: The Grace Period Mechanism
+
+Aave's solution is the `PriceOracleSentinel` --- a contract that acts as a gatekeeper, pausing certain operations when the sequencer has recently recovered. It gives users time to manage their positions before liquidators can act.
+
+### How It Detects Sequencer Status
+
+Chainlink provides a **Sequencer Uptime Feed** on each L2 --- a special oracle that reports whether the sequencer is currently operational. The PriceOracleSentinel queries this feed to determine if the sequencer is up and how long it has been up.
 
 ### The Grace Period
 
-When the sequencer comes back online, `PriceOracleSentinel` enforces a **grace period** --- a configurable window (typically 1 hour) during which:
+When the sequencer comes back online, the PriceOracleSentinel enforces a configurable grace period (typically 1 hour) during which:
 
-- **Liquidations are NOT allowed.** Users need time to add collateral or repay debt.
-- **Borrowing is NOT allowed.** Prices may still be stale or volatile; allowing borrows could let attackers take advantage of temporarily incorrect prices.
-- **Supply, repay, and withdraw still work.** These operations are safe. Supplying more collateral or repaying debt improves the user's position. Withdrawals are validated against the health factor as usual.
+| Operation | During Grace Period | After Grace Period |
+|---|---|---|
+| Supply collateral | Allowed | Allowed |
+| Repay debt | Allowed | Allowed |
+| Withdraw | Allowed | Allowed |
+| **Borrow** | **Blocked** | Allowed |
+| **Liquidation** | **Blocked** | Allowed |
 
-After the grace period expires, all operations resume normally.
+The logic is simple but precise:
 
-### The Code
+- **Liquidations are blocked** because borrowers need time to shore up their positions. Allowing instant liquidation after sequencer recovery would punish users for infrastructure failures beyond their control.
 
-The sentinel exposes two key functions:
+- **Borrowing is also blocked** because oracle prices may still be stale or volatile immediately after recovery. An attacker could borrow at favorable stale prices and extract value from the protocol before prices fully update.
 
-```solidity
-// From PriceOracleSentinel.sol
+- **Supply, repay, and withdraw are allowed** because these operations either improve the user's health factor (supply, repay) or are validated against it (withdraw). They are safe to permit during the grace period.
 
-function isBorrowAllowed() external view override returns (bool) {
-    return _isUpAndGracePeriodPassed();
-}
+### Why Block Borrowing Too?
 
-function isLiquidationAllowed() external view override returns (bool) {
-    return _isUpAndGracePeriodPassed();
-}
+This is a subtle but important point. Consider the attack without borrow blocking:
 
-function _isUpAndGracePeriodPassed() internal view returns (bool) {
-    (, int256 answer, , uint256 startedAt, ) = _sequencerOracle
-        .latestRoundData();
+1. Sequencer comes back online. Oracle still shows stale prices.
+2. An attacker's collateral is valued at $2,000 (stale) when the real market price is $1,700.
+3. The attacker borrows against the inflated collateral value, extracting real value from the protocol.
+4. Prices update. The attacker's position is underwater, but they have already pocketed the difference.
 
-    // If the sequencer is currently down, block operations
-    if (answer != 0) return false;
-
-    // If the sequencer is up but the grace period hasn't passed, block operations
-    if (block.timestamp - startedAt <= _gracePeriod) return false;
-
-    return true;
-}
-```
-
-The logic is straightforward. Query the sequencer oracle. If the sequencer is down (`answer != 0`), return false. If the sequencer is up but came back online less than `_gracePeriod` seconds ago, return false. Otherwise, return true.
-
-### Integration with ValidationLogic
-
-The sentinel is wired into the protocol's validation layer. Before executing a borrow or liquidation, the validation functions check the sentinel:
-
-```solidity
-// From ValidationLogic.sol --- inside validateBorrow()
-
-if (
-    params.userEModeCategory == 0 ||
-    EModeConfiguration.isReserveEnabledOnBitmap(
-        eModeCategories[params.userEModeCategory].borrowableBitmap,
-        reserveIndex
-    )
-) {
-    // ... other validation ...
-
-    if (address(params.priceOracleSentinel) != address(0)) {
-        require(
-            params.priceOracleSentinel.isBorrowAllowed(),
-            Errors.PRICE_ORACLE_SENTINEL_CHECK_FAILED
-        );
-    }
-}
-```
-
-And for liquidations:
-
-```solidity
-// From ValidationLogic.sol --- inside validateLiquidationCall()
-
-if (address(params.priceOracleSentinel) != address(0)) {
-    require(
-        params.priceOracleSentinel.isLiquidationAllowed(),
-        Errors.PRICE_ORACLE_SENTINEL_CHECK_FAILED
-    );
-}
-```
-
-Notice the `address(0)` check. On L1 deployments (Ethereum mainnet), the `PriceOracleSentinel` is not configured --- the address is zero. The check is skipped entirely. The sentinel only matters on L2s where sequencer risk exists.
-
-### Why Borrowing Is Also Paused
-
-It might seem like only liquidations need to be paused. But consider this attack:
-
-1. The sequencer comes back online. Oracle prices haven't fully updated yet.
-2. An attacker borrows at stale prices that are favorable to them --- for example, the oracle still shows their collateral at $2,000 when the real market price is $1,700.
-3. By the time prices update, the attacker has extracted value from the protocol.
-
-Pausing borrows during the grace period closes this vector. Users who need to improve their positions can still supply collateral and repay debt.
+Blocking borrows during the grace period closes this vector while still allowing users to protect their existing positions.
 
 ### Configuration
 
-The grace period is set by governance through the `PoolAddressesProvider`:
+The grace period is set by governance, typically to 3,600 seconds (1 hour). This provides enough time for users to react without keeping the protocol's lending functionality frozen for too long. Governance can adjust this based on the chain's historical sequencer reliability.
 
-```solidity
-function setGracePeriod(uint256 newGracePeriod) external onlyPoolAdmin {
-    _gracePeriod = newGracePeriod;
-    emit GracePeriodUpdated(newGracePeriod);
-}
-```
+### L1 vs. L2
 
-A typical grace period is 3600 seconds (1 hour). This gives users enough time to react without keeping the protocol frozen for too long.
+On Ethereum mainnet, the PriceOracleSentinel is not configured --- the sentinel address is set to zero, and all sentinel checks are skipped entirely. Sequencer risk does not exist on L1, so the protection is unnecessary. The sentinel only activates on L2 deployments where sequencer dependency creates the risk.
 
 ---
 
 ## 3. GHO: Aave's Native Stablecoin
 
-GHO is a decentralized, USD-pegged stablecoin created by Aave governance. It is fundamentally different from every other asset on Aave because it is **minted, not borrowed from a pool**.
+GHO is a decentralized, USD-pegged stablecoin created by Aave governance. It is fundamentally different from every other asset on Aave because it is **minted, not borrowed from a pool of existing tokens**.
 
-### How GHO Differs from Regular Borrowing
+### How Regular Borrowing Works (Recap)
 
-When you borrow USDC on Aave, this is what happens:
+When you borrow USDC on Aave:
 
-1. Suppliers deposit USDC into the pool. They receive aUSDC.
-2. You post collateral and borrow from that pool. The USDC is transferred from the pool to your wallet.
-3. You pay interest. That interest is shared between suppliers (most of it) and the treasury (the reserve factor portion).
-4. You repay. The USDC goes back into the pool.
+1. Suppliers deposit USDC into the pool and receive aUSDC
+2. You post collateral and borrow from that pool --- USDC transfers from the pool to your wallet
+3. You pay interest, which is split between suppliers (~90%) and the treasury (~10%)
+4. You repay --- USDC flows back into the pool
+5. There is a finite supply. At 100% utilization, no one else can borrow until someone repays
 
-There is a finite supply of USDC in the pool. If all of it is borrowed, the utilization rate hits 100%, interest rates spike, and no one else can borrow until someone repays.
+### How GHO Works
 
-GHO works differently:
+GHO flips this model:
 
-1. There are **no GHO suppliers**. No one deposits GHO into a pool.
-2. You post collateral and "borrow" GHO. New GHO tokens are **minted** and sent to your wallet.
+1. **There are no GHO suppliers.** No one deposits GHO into a pool. There is no supply side.
+2. You post collateral and "borrow" GHO. New GHO tokens are **minted into existence** and sent to your wallet.
 3. You pay interest. **100% of that interest goes to the Aave treasury** --- there are no suppliers to share with.
 4. You repay. The GHO is **burned**. It ceases to exist.
+5. There is no utilization curve. Supply expands and contracts based on demand.
 
-This means GHO has no utilization curve. There is no pool to be drained. The supply of GHO expands and contracts based on user demand.
+This is a profound economic difference. With regular assets, Aave is an intermediary --- it connects suppliers and borrowers and takes a cut (the reserve factor, typically 10-20%). With GHO, Aave is an **issuer** --- it creates the asset and captures 100% of the revenue.
+
+### Revenue Comparison
+
+| Metric | Regular Asset (USDC) | GHO |
+|---|---|---|
+| $500M outstanding at 3% borrow rate | $15M annual interest | $15M annual interest |
+| Treasury's share | $1.5M (10% reserve factor) | **$15M (100%)** |
+| Suppliers' share | $13.5M | $0 (no suppliers) |
+
+The same amount of outstanding debt generates **10x more treasury revenue** with GHO than with a regular asset. This makes GHO one of the most important economic primitives in the Aave ecosystem.
 
 ### The Facilitator Model
 
-GHO is not exclusively minted by the Aave Pool. The GHO token contract uses a **Facilitator** abstraction. A Facilitator is any approved contract that can mint and burn GHO, subject to a capacity limit.
+GHO is not exclusively minted by the Aave Pool. The GHO token contract uses a **Facilitator** abstraction --- any approved contract that can mint and burn GHO, subject to a capacity limit.
 
-```solidity
-// From GhoToken.sol
+Each Facilitator has two key properties:
 
-struct Facilitator {
-    uint128 bucketCapacity;   // max GHO this facilitator can have minted
-    uint128 bucketLevel;      // current amount of GHO minted by this facilitator
-    string label;             // human-readable name
-}
+- **Bucket capacity**: the maximum amount of GHO this Facilitator can have minted at any time
+- **Bucket level**: how much GHO this Facilitator currently has outstanding
 
-mapping(address => Facilitator) internal _facilitators;
+The Aave V3 Pool on Ethereum is the primary Facilitator. But governance can approve additional Facilitators. For example, a FlashMinter Facilitator allows flash-minting GHO (similar to flash loans but for newly created tokens).
 
-function mint(address account, uint256 amount) external {
-    require(_facilitators[msg.sender].bucketCapacity > 0, 'INVALID_FACILITATOR');
+### Why the Facilitator Model Matters
 
-    uint256 newBucketLevel = _facilitators[msg.sender].bucketLevel + amount;
-    require(
-        newBucketLevel <= _facilitators[msg.sender].bucketCapacity,
-        'FACILITATOR_BUCKET_CAPACITY_EXCEEDED'
-    );
+The Facilitator model is a risk containment mechanism. Each Facilitator is independently capped. If a Facilitator were compromised (a bug in its code, a governance attack), the damage is bounded by its bucket capacity. A Facilitator with a $50 million bucket capacity can at most create $50 million of unbacked GHO, regardless of what goes wrong.
 
-    _facilitators[msg.sender].bucketLevel = uint128(newBucketLevel);
-    _mint(account, amount);
-}
+This is fundamentally different from a design where a single contract controls all minting. The Facilitator model distributes minting authority while containing the blast radius of any single failure.
+
+### GHO Interest Rates: Governance-Set, Not Market-Driven
+
+Regular Aave assets have interest rates determined by the utilization curve (Chapter 2). GHO does not. Since there is no supply pool, there is no utilization metric to drive rates.
+
+Instead, the GHO borrow rate is set directly by governance through a custom interest rate strategy. The rate is typically set **below market rates** for comparable stablecoins. This is intentional:
+
+- A lower borrow rate encourages users to mint GHO, increasing its circulating supply and liquidity
+- More circulating GHO means deeper markets, tighter peg stability, and more integrations
+- Governance adjusts the rate based on peg stability, market conditions, and treasury revenue needs
+
+If GHO trades below $1 (too much supply), governance can raise the borrow rate to discourage minting. If GHO trades above $1 (too much demand for too little supply), governance can lower the rate to encourage more minting. The borrow rate becomes a monetary policy tool.
+
+### The stkAAVE Discount: Tying GHO to the AAVE Economy
+
+GHO includes a mechanism that connects it to the AAVE token economy. Users who hold **stkAAVE** (staked AAVE in the Safety Module) receive a discount on their GHO borrow rate.
+
+The mechanics:
+
+- Each stkAAVE token entitles the holder to a discounted rate on up to 100 GHO of debt
+- If you hold 10 stkAAVE, you get the discount on up to 1,000 GHO
+- The discount is typically 20% off the base borrow rate
+- If your GHO debt exceeds your discounted amount, a proportional discount applies
+
+### Example
+
+| Parameter | Value |
+|---|---|
+| GHO base borrow rate | 3.00% |
+| stkAAVE discount | 20% |
+| User's stkAAVE balance | 50 tokens |
+| Discounted GHO capacity | 50 * 100 = 5,000 GHO |
+| User's GHO debt | 5,000 GHO |
+
+```
+Discounted rate = 3.00% * (1 - 20%) = 2.40%
+Annual interest = 5,000 * 2.40% = $120 (instead of $150 at full rate)
+Savings = $30/year
 ```
 
-The Aave V3 Pool on Ethereum is the primary Facilitator. But governance can approve additional Facilitators --- for example, a FlashMinter Facilitator that allows flash-minting GHO (similar to flash loans but for newly created tokens).
+If the user's GHO debt were 10,000 GHO (double the discounted capacity), only half the debt would be discounted, giving an effective rate of about 2.70%.
 
-Each Facilitator has a **bucket capacity**: the maximum amount of GHO it can have outstanding at any time. This is a critical safety mechanism. If a Facilitator is compromised, the damage is bounded by its bucket capacity. Governance sets and adjusts these limits.
+### Why This Incentive Design Matters
 
-### GHO Interest Rates
+The stkAAVE discount creates a virtuous cycle:
 
-Regular Aave assets have interest rates determined by the utilization curve (Chapter 2). GHO does not. Since there is no supply pool, there is no utilization metric.
+1. Users want cheaper GHO borrowing, so they buy and stake AAVE
+2. More staked AAVE strengthens the Safety Module (Aave's insurance fund)
+3. A stronger Safety Module makes the protocol safer
+4. A safer protocol attracts more users and capital
+5. More capital means more GHO minting and more treasury revenue
 
-Instead, the GHO borrow rate is set directly by governance through a custom interest rate strategy:
+The discount ties three things together: GHO demand, AAVE token value, and protocol safety. This is deliberate economic design, not just a marketing incentive.
 
-```solidity
-// From GhoInterestRateStrategy.sol
+### How GHO Fits Into the Existing Pool
 
-contract GhoInterestRateStrategy is IGhoInterestRateStrategy {
-    uint256 internal _borrowRate;
+Despite its unique minting mechanics, GHO integrates into the Aave Pool through familiar infrastructure:
 
-    function calculateInterestRates(
-        DataTypes.CalculateInterestRatesParams memory
-    ) external view override returns (uint256, uint256, uint256) {
-        // Supply rate is always 0 (no suppliers)
-        // Stable borrow rate is 0 (GHO only uses variable)
-        // Variable borrow rate is the governance-set rate
-        return (0, 0, _borrowRate);
-    }
+- Collateral and health factor validation work identically to any other borrow
+- GHO debt is tracked through the standard VariableDebtToken
+- Liquidation mechanics are the same --- if your health factor drops below 1, your collateral is seized
+- Interest compounds through the normal index mechanism
 
-    function setInterestRate(uint256 newBorrowRate) external onlyRiskAdmin {
-        uint256 oldBorrowRate = _borrowRate;
-        _borrowRate = newBorrowRate;
-        emit BorrowRateUpdated(oldBorrowRate, newBorrowRate);
-    }
-}
-```
+The key difference is in the token flow. When the Pool processes a GHO "borrow," instead of transferring existing tokens from a supply pool, it calls `GhoToken.mint()`. When processing a repay, it calls `GhoToken.burn()`. Everything else --- collateral checks, health factor, liquidation --- is identical.
 
-The rate is typically set below market rates for comparable stablecoins. This is intentional --- a lower borrow rate encourages users to mint GHO, which increases its circulating supply and liquidity. Governance adjusts the rate based on market conditions and the GHO peg.
+### GHO Across Chains
 
-### The stkAAVE Discount
-
-GHO includes a mechanism that ties it to the AAVE token economy. Users who hold **stkAAVE** (staked AAVE in the Safety Module) receive a discount on their GHO borrow rate.
-
-The discount is managed by a `GhoDiscountRateStrategy`:
-
-```solidity
-// Simplified from GhoDiscountRateStrategy.sol
-
-contract GhoDiscountRateStrategy is IGhoDiscountRateStrategy {
-    uint256 public constant GHO_DISCOUNTED_PER_DISCOUNT_TOKEN = 100e18;
-    uint256 public constant DISCOUNT_RATE = 2000; // 20% in basis points
-
-    function calculateDiscountRate(
-        uint256 debtBalance,
-        uint256 discountTokenBalance  // stkAAVE balance
-    ) external pure override returns (uint256) {
-        uint256 discountedBalance = discountTokenBalance
-            * GHO_DISCOUNTED_PER_DISCOUNT_TOKEN;
-
-        if (discountedBalance >= debtBalance) {
-            return DISCOUNT_RATE; // full discount
-        } else {
-            return (DISCOUNT_RATE * discountedBalance) / debtBalance; // proportional
-        }
-    }
-}
-```
-
-The idea: each stkAAVE token entitles the holder to a discounted rate on up to 100 GHO of debt. If you hold 10 stkAAVE, you get the discount on up to 1,000 GHO. If your GHO debt exceeds the discounted amount, only a proportional discount applies.
-
-This creates a demand driver for AAVE staking. Users who want cheaper GHO borrowing have an incentive to buy and stake AAVE, which strengthens the Safety Module and the protocol's overall security.
-
-### How GHO Fits into the Pool
-
-Despite its unique minting mechanics, GHO integrates into the Aave Pool in a way that looks familiar to the existing architecture. From the Pool's perspective, a GHO "borrow" still:
-
-- Validates collateral and health factor through `ValidationLogic`
-- Updates debt token balances through `VariableDebtToken`
-- Is subject to liquidation if the health factor drops below 1
-- Accrues interest that compounds through the normal index mechanism
-
-The key difference is in the token flow. When the Pool processes a GHO borrow, instead of transferring existing tokens from a supply pool, it calls `GhoToken.mint()`. When processing a repay, it calls `GhoToken.burn()`. The collateral and liquidation mechanics are identical to any other asset.
-
-### Revenue Implications
-
-GHO is a significant revenue source for the Aave treasury. With regular assets, the protocol only receives the reserve factor portion of interest (typically 10-20%). With GHO, the treasury receives **100% of borrow interest** because there are no suppliers to compensate.
-
-If 500 million GHO is outstanding at a 3% borrow rate, that is $15 million per year flowing directly to the Aave treasury. This makes GHO one of the most important economic primitives in the Aave ecosystem.
-
-### Current Status
-
-GHO launched on Ethereum mainnet and is expanding to additional chains. Cross-chain GHO involves bridge mechanisms and additional Facilitators on destination chains, allowing GHO minted on one chain to be used on another while maintaining consistent accounting.
+GHO launched on Ethereum mainnet and is expanding to additional chains. Cross-chain GHO involves bridge mechanisms and additional Facilitators on destination chains. A Facilitator on Arbitrum, for example, could mint GHO backed by collateral in the Arbitrum Aave pool, while a separate Facilitator on Ethereum handles mainnet minting. Each has its own bucket capacity, maintaining the risk containment model.
 
 ---
 
-## 4. Multi-chain Governance
+## 4. Multi-Chain Governance: Ethereum Controls Everything
 
-Aave governance lives on Ethereum mainnet. All governance proposals --- parameter changes, new asset listings, risk configuration updates --- are voted on and executed on L1. But these decisions need to reach deployments on Arbitrum, Optimism, Base, and every other chain where Aave is deployed.
+Aave governance lives on Ethereum mainnet. All proposals --- parameter changes, asset listings, risk updates --- are voted on and executed on L1. But Aave runs on many chains. How do governance decisions reach Arbitrum, Optimism, Base, and every other deployment?
 
-### Cross-chain Execution
+### The Cross-Chain Execution Flow
 
-When a governance proposal targets an L2 deployment, the execution flow is:
+1. A governance proposal passes on Ethereum through the standard process (Chapter 12): discussion, vote, timelock
+2. The execution payload includes a cross-chain message routed through the native L1-to-L2 bridge for the target chain
+3. A CrossChainForwarder on Ethereum sends the encoded payload to the target chain
+4. A CrossChainExecutor on the L2 receives and executes the payload, applying the governance decision to the local Pool
 
-1. The proposal passes on Ethereum mainnet through the standard governance process (Chapter 12).
-2. The execution payload includes a cross-chain message routed through a bridge (typically the native L1-to-L2 messaging bridge for the target chain).
-3. A `CrossChainForwarder` on Ethereum sends the encoded payload to the target chain.
-4. A `CrossChainExecutor` on the L2 receives and executes the payload, applying the governance decision to the local Pool deployment.
+This means no single admin on an L2 can unilaterally modify protocol parameters. All authority flows from Ethereum governance. The L2 deployments are sovereign in their day-to-day operations (users interact directly with the L2 Pool) but subordinate in their governance (parameter changes come from L1).
 
-Each chain has its own `PoolAddressesProvider`, its own `Pool`, its own set of reserve configurations. But the authority to change any of these flows from Ethereum governance. No single admin on an L2 can unilaterally modify protocol parameters.
+### Per-Chain Independence
 
-### Per-chain Configuration
+While governance is centralized on Ethereum, each chain deployment has independent parameters. The same asset might have different LTVs, liquidation thresholds, or interest rate strategies on different chains. This makes sense because:
 
-While governance is centralized on Ethereum, each chain deployment has independent parameters. The same asset might have different LTVs, liquidation thresholds, or interest rate strategies on different chains. This makes sense --- the liquidity profile, oracle infrastructure, and risk characteristics of an asset can vary significantly across chains.
+- **Liquidity profiles differ**: ETH on Ethereum mainnet has deeper DEX liquidity than ETH on a smaller L2, affecting liquidation efficiency
+- **Oracle infrastructure varies**: some chains have more robust oracle coverage than others
+- **Bridge risk exists**: bridged USDC on Arbitrum carries additional bridge risk that native USDC on Ethereum does not
+- **User behavior differs**: different chains attract different user populations with different risk appetites
 
-For example, USDC on Ethereum mainnet might have different risk parameters than bridged USDC on Arbitrum, because bridged assets carry additional bridge risk that native assets do not.
+Governance tailors parameters per chain to reflect these realities, rather than applying a one-size-fits-all configuration.
 
 ---
 
-## 5. Putting It Together
+## 5. Putting It Together: Aave's Evolution Beyond a Lending Pool
 
-The additions in this chapter --- `PriceOracleSentinel` and GHO --- represent two different dimensions of Aave V3's evolution beyond a simple lending pool.
+The two major themes of this chapter --- sequencer risk protection and GHO --- represent different dimensions of Aave V3's evolution.
 
-The sentinel addresses **deployment risk**. Moving to L2s brings lower fees and faster transactions, but it also introduces sequencer dependency. The grace period mechanism is a targeted solution: minimal code, no changes to the core liquidation logic, just a validation check that gates operations during a vulnerable window.
+**PriceOracleSentinel** addresses deployment risk. Moving to L2s brings lower fees and faster transactions, but introduces sequencer dependency. The grace period is a targeted, minimal solution: it does not change how liquidations work, it simply adds a precondition that gates operations during a vulnerable window. The design philosophy is surgical --- solve the problem at the right layer without disrupting the core protocol.
 
-GHO addresses **economic design**. Instead of being a pure intermediary between suppliers and borrowers, Aave becomes an issuer. The protocol mints its own stablecoin, captures 100% of the interest, and uses the stkAAVE discount to tie the stablecoin's success to the governance token's value. The Facilitator model keeps this extensible without concentrating risk.
+**GHO** addresses economic design. Instead of being a pure intermediary between suppliers and borrowers, Aave becomes an issuer. The protocol mints its own stablecoin, captures 100% of the interest, and uses the stkAAVE discount to create a flywheel connecting stablecoin demand, token value, and protocol safety. The Facilitator model keeps this extensible without concentrating risk.
 
-Both features share a design philosophy that runs through all of Aave V3: **solve the problem at the right layer of abstraction**. The sentinel doesn't change how liquidations work --- it adds a precondition. GHO doesn't change how collateral or health factors work --- it changes where the borrowed tokens come from. The core protocol remains the same.
+Both features share a design philosophy that runs through all of Aave V3: **solve the problem at the right layer of abstraction**. The sentinel does not change liquidation logic --- it adds a precondition. GHO does not change collateral or health factor logic --- it changes where borrowed tokens come from. The core protocol remains the same.
 
-With this chapter, you have the complete picture of Aave V3: the interest rate model, the index system, the token mechanics, supply and borrow flows, liquidations, flash loans, E-Mode, isolation mode, reserves, governance, risk features, L2 protections, and GHO. These are the building blocks of the most widely deployed lending protocol in DeFi.
+---
+
+## Summary
+
+This chapter covers two critical extensions to Aave V3:
+
+- **PriceOracleSentinel** protects L2 users from unfair liquidation after sequencer downtime. It enforces a grace period (typically 1 hour) during which liquidations and borrows are blocked, giving users time to manage their positions. Supply, repay, and withdraw remain available throughout.
+
+- **GHO** is Aave's native stablecoin, minted (not borrowed from a pool), with governance-set interest rates and 100% of revenue flowing to the treasury. The Facilitator model contains risk by capping each minting source independently. The stkAAVE discount creates economic alignment between GHO demand, AAVE staking, and protocol safety.
+
+- **Multi-chain governance** ensures Ethereum-based governance controls all chain deployments while allowing per-chain parameter independence. Cross-chain messages carry governance decisions from L1 to each L2 through native bridges.
+
+With this chapter, you have the complete picture of Aave V3: interest rate models, index math, token mechanics, supply and borrow flows, liquidations, flash loans, E-Mode, Isolation Mode, reserves, governance, risk features, L2 protections, and GHO. These are the building blocks of the most widely deployed lending protocol in DeFi.
