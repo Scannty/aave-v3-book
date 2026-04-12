@@ -7,7 +7,6 @@
 * [Prerequisites Overview](prerequisites/README.md)
   * [Chainlink Price Feeds](prerequisites/chainlink-oracles.md)
   * [Proxy Patterns and Upgradeability](prerequisites/proxy-patterns.md)
-  * [DeFi Interest Rate Models](prerequisites/defi-interest-rates.md)
   * [DeFi Liquidations and Collateral](prerequisites/defi-liquidations.md)
   * [ERC-20 and Rebasing Tokens](prerequisites/erc20-token-standards.md)
 

@@ -14,13 +14,9 @@ Aave V3 solves this with a **utilization-based interest rate model**. The intere
 
 The **utilization rate** measures what fraction of the pool's capital is currently lent out:
 
-```
-            totalDebt
-U = ─────────────────────────────
-     availableLiquidity + totalDebt
-```
+$$U = \frac{totalDebt}{totalSupply}$$
 
-The denominator represents the total capital in the system: the liquidity sitting in the pool plus the liquidity that has been borrowed out. The numerator is just the borrowed portion.
+Total supply is all the capital in the system: the liquidity sitting idle in the pool plus the liquidity that has been borrowed out. The numerator is just the borrowed portion.
 
 - **U = 0%** means no one is borrowing. All capital is idle.
 - **U = 50%** means half the pool has been lent out.
@@ -28,9 +24,13 @@ The denominator represents the total capital in the system: the liquidity sittin
 
 Utilization near 100% is dangerous. It creates a liquidity crisis where suppliers are trapped. The interest rate model's primary job is to prevent this from happening.
 
+## Why Not a Simple Linear Rate?
+
+The simplest approach would be a straight line: rate goes up proportionally with utilization. But this fails in practice. At 90% utilization, the rate might be 18%, while at 80% it is 16% --- not much difference. There is no urgency signal when the pool is dangerously low on liquidity. Depositors trying to withdraw at 95% utilization face the same moderate incentive as at 70%. A linear model cannot distinguish between "comfortable" and "emergency."
+
 ## The Kink Model: Incentive Design Through a Rate Curve
 
-Aave does not use a simple linear relationship between utilization and interest rates. Instead, it uses a **piecewise linear model with a kink** --- a point where the slope of the rate curve changes dramatically.
+Aave solves this with a **piecewise linear model with a kink** --- a point where the slope of the rate curve changes dramatically.
 
 <video src="../animations/final/utilization_shift.webm" controls autoplay loop muted playsinline style="width:100%;max-width:800px;border-radius:8px;margin:20px 0"></video>
 
@@ -42,9 +42,7 @@ When utilization is below the target, the protocol is comfortable. There is plen
 
 The formula is:
 
-```
-borrowRate = baseRate + (U / U_optimal) * slope1
-```
+$$R_{borrow} = R_{base} + \frac{U}{U_{optimal}} \times slope_1$$
 
 The rate climbs linearly from the base rate toward `baseRate + slope1` as utilization approaches the target.
 
@@ -57,9 +55,7 @@ When utilization crosses the target, the protocol gets aggressive. Rates start c
 
 The formula is:
 
-```
-borrowRate = baseRate + slope1 + ((U - U_optimal) / (1 - U_optimal)) * slope2
-```
+$$R_{borrow} = R_{base} + slope_1 + \frac{U - U_{optimal}}{1 - U_{optimal}} \times slope_2$$
 
 Above the kink, you pay the full `slope1` *plus* a rapidly increasing portion of `slope2`. Since `slope2` is typically 15--75x larger than `slope1`, the rate curve bends sharply upward.
 
@@ -92,15 +88,11 @@ Suppliers earn interest that comes directly from borrowers. But the supply rate 
 
 The supply rate formula captures both effects:
 
-```
-supplyRate = borrowRate * utilization * (1 - reserveFactor)
-```
+$$R_{supply} = R_{borrow} \times U \times (1 - reserveFactor)$$
 
 Let's make this concrete. If borrowers are paying 5% APY, utilization is 80%, and the reserve factor is 10%:
 
-```
-supplyRate = 5% * 0.80 * 0.90 = 3.6%
-```
+$$R_{supply} = 5\% \times 0.80 \times 0.90 = 3.6\%$$
 
 Where does the remaining 1.4% go?
 
@@ -127,27 +119,17 @@ Let's trace through the full rate model with realistic parameters.
 
 We are well below the 90% kink. Rates are in the gentle zone.
 
-```
-borrowRate = 0% + (60% / 90%) * 3.5%
-           = 0.667 * 3.5%
-           = 2.33%
+$$R_{borrow} = 0\% + \frac{60\%}{90\%} \times 3.5\% = 0.667 \times 3.5\% = 2.33\%$$
 
-supplyRate = 2.33% * 60% * 90%
-           = 1.26%
-```
+$$R_{supply} = 2.33\% \times 0.60 \times 0.90 = 1.26\%$$
 
 Borrowers pay 2.33%. Suppliers earn 1.26%. The market is relaxed.
 
 ### Scenario 2: Utilization at 90% (right at the kink)
 
-```
-borrowRate = 0% + (90% / 90%) * 3.5%
-           = 1.0 * 3.5%
-           = 3.5%
+$$R_{borrow} = 0\% + \frac{90\%}{90\%} \times 3.5\% = 3.5\%$$
 
-supplyRate = 3.5% * 90% * 90%
-           = 2.84%
-```
+$$R_{supply} = 3.5\% \times 0.90 \times 0.90 = 2.84\%$$
 
 At the target, borrowers pay 3.5% and suppliers earn 2.84%. Still manageable.
 
@@ -155,15 +137,9 @@ At the target, borrowers pay 3.5% and suppliers earn 2.84%. Still manageable.
 
 Now the steep slope kicks in:
 
-```
-borrowRate = 0% + 3.5% + ((95% - 90%) / (100% - 90%)) * 60%
-           = 3.5% + (0.5) * 60%
-           = 3.5% + 30%
-           = 33.5%
+$$R_{borrow} = 3.5\% + \frac{95\% - 90\%}{100\% - 90\%} \times 60\% = 3.5\% + 30\% = 33.5\%$$
 
-supplyRate = 33.5% * 95% * 90%
-           = 28.64%
-```
+$$R_{supply} = 33.5\% \times 0.95 \times 0.90 = 28.64\%$$
 
 Going from 90% to 95% utilization --- just 5 percentage points --- caused the borrow rate to **jump from 3.5% to 33.5%**. That is nearly a 10x increase. Meanwhile, suppliers are now earning 28.64%, which will attract new capital and push utilization back down.
 
@@ -171,14 +147,9 @@ This is the kink model doing its job.
 
 ### Scenario 4: Utilization at 100% (crisis territory)
 
-```
-borrowRate = 0% + 3.5% + ((100% - 90%) / (100% - 90%)) * 60%
-           = 3.5% + 60%
-           = 63.5%
+$$R_{borrow} = 3.5\% + \frac{100\% - 90\%}{100\% - 90\%} \times 60\% = 3.5\% + 60\% = 63.5\%$$
 
-supplyRate = 63.5% * 100% * 90%
-           = 57.15%
-```
+$$R_{supply} = 63.5\% \times 1.00 \times 0.90 = 57.15\%$$
 
 At full utilization, borrowers are paying 63.5% APY. This rate is designed to be untenable --- no rational borrower will maintain a position at this cost for long. At the same time, 57.15% supply APY is a powerful magnet for new capital.
 

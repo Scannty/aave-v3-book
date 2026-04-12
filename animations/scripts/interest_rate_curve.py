@@ -75,29 +75,29 @@ class InterestRateCurve(Scene):
             supply_rate, x_range=[0, 1, 0.005], color=GREEN
         )
 
-        # Legend
+        # Legend - top left so it doesn't overlap the chart
         borrow_legend = VGroup(
             Line(ORIGIN, RIGHT * 0.5, color=RED),
-            Text("Borrow Rate", font_size=22, color=RED),
+            Text("Borrow Rate", font_size=20, color=RED),
         ).arrange(RIGHT, buff=0.2)
         supply_legend = VGroup(
             Line(ORIGIN, RIGHT * 0.5, color=GREEN),
-            Text("Supply Rate", font_size=22, color=GREEN),
+            Text("Supply Rate", font_size=20, color=GREEN),
         ).arrange(RIGHT, buff=0.2)
         legend = VGroup(borrow_legend, supply_legend).arrange(DOWN, aligned_edge=LEFT, buff=0.15)
-        legend.to_corner(DR, buff=0.8).shift(UP * 1.5)
+        legend.move_to(axes.c2p(0.25, 0.55))
 
-        # Slope labels
+        # Slope labels - positioned clearly away from curves
         slope1_label = Text("Slope 1 (gentle)", font_size=18, color=RED_B).move_to(
-            axes.c2p(0.45, 0.06)
+            axes.c2p(0.45, 0.08)
         )
         slope2_label = Text("Slope 2 (steep)", font_size=18, color=RED_B).move_to(
-            axes.c2p(0.95, 0.35)
-        ).rotate(55 * DEGREES)
+            axes.c2p(0.82, 0.45)
+        )
 
         # Animation sequence
-        self.play(Write(title), run_time=1)
-        self.play(Create(axes), Write(x_label), Write(y_label), run_time=1.5)
+        self.play(FadeIn(title), run_time=1)
+        self.play(Create(axes), FadeIn(x_label), FadeIn(y_label), run_time=1.5)
         self.play(FadeIn(x_pct_labels), FadeIn(y_pct_labels), run_time=0.8)
 
         # Draw gentle slope
@@ -105,7 +105,7 @@ class InterestRateCurve(Scene):
         self.play(FadeIn(slope1_label), run_time=0.5)
 
         # Show kink point
-        self.play(Create(kink_line), Write(kink_label), run_time=1)
+        self.play(Create(kink_line), FadeIn(kink_label), run_time=1)
 
         # Draw steep slope
         self.play(Create(borrow_curve_right), run_time=1.5)

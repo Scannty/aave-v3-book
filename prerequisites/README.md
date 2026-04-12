@@ -20,11 +20,7 @@ Aave needs to know the real-time price of every asset in the protocol. It relies
 
 Aave V3's core contracts (Pool, PoolConfigurator, and others) are deployed behind **upgradeable proxies**. This means the protocol can fix bugs and add features without migrating all user positions to new contracts. Understanding `delegatecall`, storage layout, and the difference between Transparent Proxy and UUPS patterns will help you read Aave's deployment and upgrade code.
 
-### 4. [DeFi Interest Rate Models](defi-interest-rates.md)
-
-Aave V3 uses a **variable interest rate model** that adjusts supply and borrow rates based on how much of a pool's liquidity is being borrowed. The core idea --- the utilization-based kink model --- is shared across most lending protocols. Knowing how this works before reading the Aave-specific implementation will make Chapter 2 much easier.
-
-### 5. [DeFi Liquidations and Collateral](defi-liquidations.md)
+### 4. [DeFi Liquidations and Collateral](defi-liquidations.md)
 
 Lending protocols must handle the case where a borrower's collateral drops in value. Aave V3 uses **health factors**, **LTV ratios**, and **liquidation thresholds** to decide when a position is unsafe, and it incentivizes external **liquidators** to close those positions. This prerequisite covers the general mechanics so you can focus on Aave's specific implementation in Chapter 7.
 
