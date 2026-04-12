@@ -8,7 +8,7 @@ If rates are too low, borrowers flood in and drain the pool. Suppliers cannot wi
 
 Aave V3 solves this with a **utilization-based interest rate model**. The interest rate is not set by governance or by an oracle --- it is a pure function of how much of the available liquidity is currently being borrowed. More borrowing means higher rates. Less borrowing means lower rates. The system is self-correcting.
 
-<video src="../animations/final/interest_rate_curve.webm" controls autoplay loop muted playsinline style="width:100%;max-width:800px;border-radius:8px;margin:20px 0"></video>
+<video src="animations/final/interest_rate_curve.webm" controls autoplay loop muted playsinline style="width:100%;max-width:800px;border-radius:8px;margin:20px 0"></video>
 
 ## Utilization: The One Number That Drives Everything
 
@@ -32,7 +32,7 @@ The simplest approach would be a straight line: rate goes up proportionally with
 
 Aave solves this with a **piecewise linear model with a kink** --- a point where the slope of the rate curve changes dramatically.
 
-<video src="../animations/final/utilization_shift.webm" controls autoplay loop muted playsinline style="width:100%;max-width:800px;border-radius:8px;margin:20px 0"></video>
+<video src="animations/final/utilization_shift.webm" controls autoplay loop muted playsinline style="width:100%;max-width:800px;border-radius:8px;margin:20px 0"></video>
 
 The kink point is called the **optimal utilization ratio** (typically 80--90% for stablecoins, 45--65% for volatile assets). Think of it as the protocol's target: "We want utilization to hover around this level."
 

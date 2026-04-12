@@ -64,7 +64,7 @@ The liquidation threshold is always **higher** than the LTV:
 
 The gap between LTV and liquidation threshold gives borrowers a buffer zone. When you borrow at max LTV, you are not immediately at risk of liquidation --- the price has to move against you enough to cross the liquidation threshold.
 
-<video src="../animations/final/ltv_buffer.webm" controls autoplay loop muted playsinline style="width:100%;max-width:800px;border-radius:8px;margin:20px 0"></video>
+<video src="animations/final/ltv_buffer.webm" controls autoplay loop muted playsinline style="width:100%;max-width:800px;border-radius:8px;margin:20px 0"></video>
 
 ---
 

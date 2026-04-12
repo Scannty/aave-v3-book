@@ -4,7 +4,7 @@ By now you understand how Aave works economically: interest rates balance supply
 
 This is the most Solidity-heavy chapter in the book. If you are here for the economics, you can skip it. If you want to understand how to read the codebase, integrate with it, or audit it --- this is where that knowledge lives.
 
-<video src="../animations/final/architecture.webm" controls autoplay loop muted playsinline style="width:100%;max-width:800px;border-radius:8px;margin:20px 0"></video>
+<video src="animations/final/architecture.webm" controls autoplay loop muted playsinline style="width:100%;max-width:800px;border-radius:8px;margin:20px 0"></video>
 
 ---
 

@@ -35,7 +35,7 @@ The PoolAddressesProvider is owned by the governance executor. Only governance c
 
 ## 2. The Trust Hierarchy: Who Can Do What
 
-<video src="../animations/final/governance_flow.webm" controls autoplay loop muted playsinline style="width:100%;max-width:800px;border-radius:8px;margin:20px 0"></video>
+<video src="animations/final/governance_flow.webm" controls autoplay loop muted playsinline style="width:100%;max-width:800px;border-radius:8px;margin:20px 0"></video>
 
 Aave's access control is managed through the `ACLManager` contract, which implements role-based permissions using OpenZeppelin's AccessControl. Every privileged function in the protocol checks the caller's role through ACLManager before executing. There are no backdoors.
 
@@ -186,7 +186,7 @@ This separation ensures that emergency response is fast while permanent changes 
 
 ## 5. Upgradeability: Same Address, New Logic
 
-<video src="../animations/final/proxy_upgrade.webm" controls autoplay loop muted playsinline style="width:100%;max-width:800px;border-radius:8px;margin:20px 0"></video>
+<video src="animations/final/proxy_upgrade.webm" controls autoplay loop muted playsinline style="width:100%;max-width:800px;border-radius:8px;margin:20px 0"></video>
 
 Aave's core contracts --- Pool, PoolConfigurator, aTokens, and debt tokens --- are all deployed behind proxies. This means the protocol can fix bugs, add features, and improve gas efficiency without changing any contract addresses or losing any state.
 
@@ -211,7 +211,7 @@ Upgrades are the most sensitive governance action. A malicious Pool implementati
 
 ## 6. Portal: Cross-Chain Liquidity (Brief Overview)
 
-<video src="../animations/final/portal.webm" controls autoplay loop muted playsinline style="width:100%;max-width:800px;border-radius:8px;margin:20px 0"></video>
+<video src="animations/final/portal.webm" controls autoplay loop muted playsinline style="width:100%;max-width:800px;border-radius:8px;margin:20px 0"></video>
 
 Portal is an Aave V3 feature designed for cross-chain liquidity movement. It allows authorized bridge protocols (addresses with the `BRIDGE` role) to mint "unbacked" aTokens on one chain, facilitating instant liquidity, and later back them with real assets transferred through the bridge.
 

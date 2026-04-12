@@ -2,7 +2,7 @@
 
 This chapter covers one of the most elegant design patterns in all of DeFi: how Aave V3 tracks interest accrual for thousands of users without ever touching their individual balances. Once you understand this mechanism, everything else in the protocol --- aTokens, debt tokens, supply flows, liquidations --- falls into place.
 
-<video src="../animations/final/liquidity_index.webm" controls autoplay loop muted playsinline style="width:100%;max-width:800px;border-radius:8px;margin:20px 0"></video>
+<video src="animations/final/liquidity_index.webm" controls autoplay loop muted playsinline style="width:100%;max-width:800px;border-radius:8px;margin:20px 0"></video>
 
 ---
 
@@ -39,7 +39,7 @@ Every reserve has its own liquidity index. USDC has one, ETH has one, WBTC has o
 
 ## Scaled Balances: The Accounting Trick
 
-<video src="../animations/final/scaled_balance.webm" controls autoplay loop muted playsinline style="width:100%;max-width:800px;border-radius:8px;margin:20px 0"></video>
+<video src="animations/final/scaled_balance.webm" controls autoplay loop muted playsinline style="width:100%;max-width:800px;border-radius:8px;margin:20px 0"></video>
 
 Here is the key insight. Aave never stores your "actual" balance. Instead, it stores a **scaled balance** --- your deposit amount divided by the liquidity index at the moment you deposited.
 

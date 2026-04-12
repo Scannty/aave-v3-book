@@ -44,7 +44,7 @@ You redeem your aTokens for the underlying asset. If you have outstanding borrow
 
 ## The Unified Pool
 
-<video src="../animations/final/unified_pool.webm" controls autoplay loop muted playsinline style="width:100%;max-width:800px;border-radius:8px;margin:20px 0"></video>
+<video src="animations/final/unified_pool.webm" controls autoplay loop muted playsinline style="width:100%;max-width:800px;border-radius:8px;margin:20px 0"></video>
 
 Aave V3 manages every listed asset through a single pool. USDC, ETH, WBTC, DAI, and dozens of other assets all share one system. When you supply USDC and borrow ETH, both operations happen in the same pool.
 
@@ -63,7 +63,7 @@ These features are covered in detail in later chapters.
 
 ## The Economic Loop
 
-<video src="../animations/final/economic_loop.webm" controls autoplay loop muted playsinline style="width:100%;max-width:800px;border-radius:8px;margin:20px 0"></video>
+<video src="animations/final/economic_loop.webm" controls autoplay loop muted playsinline style="width:100%;max-width:800px;border-radius:8px;margin:20px 0"></video>
 
 The core economic loop of the protocol is simple:
 

@@ -8,7 +8,7 @@ Now consider a different case: you deposit $10,000 of ETH and want to borrow USD
 
 The problem is clear: a one-size-fits-all approach to risk parameters is either too conservative for correlated assets or too aggressive for uncorrelated ones. Aave V3 solves this with **E-Mode (Efficiency Mode)** --- a system that gives correlated asset pairs dramatically better borrowing terms.
 
-<video src="../animations/final/emode_comparison.webm" controls autoplay loop muted playsinline style="width:100%;max-width:800px;border-radius:8px;margin:20px 0"></video>
+<video src="animations/final/emode_comparison.webm" controls autoplay loop muted playsinline style="width:100%;max-width:800px;border-radius:8px;margin:20px 0"></video>
 
 ---
 
@@ -80,7 +80,7 @@ Assets like WBTC (category 0) do not belong to any E-Mode group and always use t
 
 ## 3. The Rules of E-Mode
 
-<video src="../animations/final/emode_barchart.webm" controls autoplay loop muted playsinline style="width:100%;max-width:800px;border-radius:8px;margin:20px 0"></video>
+<video src="animations/final/emode_barchart.webm" controls autoplay loop muted playsinline style="width:100%;max-width:800px;border-radius:8px;margin:20px 0"></video>
 
 E-Mode is not a free lunch. It comes with a strict constraint and some important nuances:
 

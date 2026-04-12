@@ -64,7 +64,7 @@ A portion of the liquidation bonus is redirected to the Aave treasury. If the bo
 
 ## 2. The Health Factor: One Number to Rule Them All
 
-<video src="../animations/final/health_factor.webm" controls autoplay loop muted playsinline style="width:100%;max-width:800px;border-radius:8px;margin:20px 0"></video>
+<video src="animations/final/health_factor.webm" controls autoplay loop muted playsinline style="width:100%;max-width:800px;border-radius:8px;margin:20px 0"></video>
 
 The health factor (HF) is the single most important number for any borrower. It condenses the entire safety of a position into one metric:
 

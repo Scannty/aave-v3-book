@@ -31,7 +31,7 @@ Each step changes the protocol's supply-demand balance, which in turn moves inte
 
 ## Supply: Depositing Assets into the Pool
 
-<video src="../animations/final/supply_flow.webm" controls autoplay loop muted playsinline style="width:100%;max-width:800px;border-radius:8px;margin:20px 0"></video>
+<video src="animations/final/supply_flow.webm" controls autoplay loop muted playsinline style="width:100%;max-width:800px;border-radius:8px;margin:20px 0"></video>
 
 ### What Happens Economically
 
@@ -83,7 +83,7 @@ You supply 10,000 USDC. The current liquidity index is 1.03. The supply cap is 1
 
 ## Borrow: Taking a Loan Against Your Collateral
 
-<video src="../animations/final/borrow_flow.webm" controls autoplay loop muted playsinline style="width:100%;max-width:800px;border-radius:8px;margin:20px 0"></video>
+<video src="animations/final/borrow_flow.webm" controls autoplay loop muted playsinline style="width:100%;max-width:800px;border-radius:8px;margin:20px 0"></video>
 
 ### What Happens Economically
 
@@ -172,7 +172,7 @@ The borrow flow checks isolation mode constraints and tracks the isolated asset'
 
 ## Repay: Returning What You Borrowed
 
-<video src="../animations/final/repay_withdraw.webm" controls autoplay loop muted playsinline style="width:100%;max-width:800px;border-radius:8px;margin:20px 0"></video>
+<video src="animations/final/repay_withdraw.webm" controls autoplay loop muted playsinline style="width:100%;max-width:800px;border-radius:8px;margin:20px 0"></video>
 
 ### What Happens Economically
 
