@@ -111,27 +111,7 @@ The sharp increase past 80% creates a strong incentive to bring utilization back
 
 ## Visualizing the Kink
 
-```
-Borrow Rate
-    |
-79% |                                                          *
-    |                                                     *
-    |                                                *
-    |                                           *
-    |                                      *
-    |                                 *
-    |                            *
- 4% |                       *
-    |                  *
-    |             *
-    |        *
-    |   *
- 0% *---------------------------------------------------
-    0%        20%       40%       60%  80%  90%  100%
-                                        ^
-                                   U_optimal
-                                   (the kink)
-```
+<video src="../animations/final/kink_model.webm" controls autoplay loop muted playsinline style="width:100%;max-width:800px;border-radius:8px;margin:20px 0"></video>
 
 The "kink" is visible at 80% --- a sharp change in the slope of the curve.
 

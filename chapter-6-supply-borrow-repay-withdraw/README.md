@@ -18,6 +18,8 @@ The Pool contract is the entry point for all user-facing operations. It does not
 
 ## Supply Flow
 
+<video src="../animations/final/supply_flow.webm" controls autoplay loop muted playsinline style="width:100%;max-width:800px;border-radius:8px;margin:20px 0"></video>
+
 ### The User's Perspective
 
 A user calls `Pool.supply()` to deposit assets and begin earning interest:
@@ -265,37 +267,11 @@ if (isFirstSupply) {
 
 The auto-collateral check considers whether the asset has a non-zero LTV, whether the user is in isolation mode (which restricts collateral to a single asset), and other configuration flags.
 
-### The Complete Picture
-
-```
-User calls Pool.supply(USDC, 1000, self, 0)
-  │
-  ├── updateState()
-  │     ├── Update liquidityIndex (linear interest since last update)
-  │     ├── Update variableBorrowIndex (compound interest)
-  │     └── Accrue treasury share
-  │
-  ├── validateSupply()
-  │     ├── amount != 0 ✓
-  │     ├── reserve is active ✓
-  │     ├── reserve not paused ✓
-  │     ├── reserve not frozen ✓
-  │     └── supply cap not exceeded ✓
-  │
-  ├── updateInterestRates(liquidityAdded=1000, liquidityRemoved=0)
-  │     └── Recalculate supply/borrow rates with new utilization
-  │
-  ├── safeTransferFrom(user, aToken, 1000 USDC)
-  │
-  ├── aToken.mint(user, user, 1000, newIndex)
-  │     └── Store scaledBalance = 1000 / newIndex
-  │
-  └── (if first supply) setUsingAsCollateral(true)
-```
-
 ---
 
 ## Borrow Flow
+
+<video src="../animations/final/borrow_flow.webm" controls autoplay loop muted playsinline style="width:100%;max-width:800px;border-radius:8px;margin:20px 0"></video>
 
 ### The User's Perspective
 
@@ -538,36 +514,11 @@ IAToken(reserveCache.aTokenAddress).transferUnderlyingTo(
 
 This calls the aToken's `transferUnderlyingTo()` function, which performs a simple `safeTransfer` of the underlying token. The aToken contract is the vault, and only the Pool (via the `onlyPool` modifier) can trigger withdrawals from it.
 
-### The Complete Picture
-
-```
-User calls Pool.borrow(USDC, 500, VARIABLE, 0, self)
-  │
-  ├── updateState()
-  │     └── Update both indexes, accrue treasury
-  │
-  ├── validateBorrow()
-  │     ├── amount != 0 ✓
-  │     ├── reserve active, not paused, not frozen ✓
-  │     ├── borrowing enabled ✓
-  │     ├── borrow cap not exceeded ✓
-  │     ├── user has collateral ✓
-  │     └── health factor remains > 1 after borrow ✓
-  │
-  ├── VariableDebtToken.mint(user, user, 500, variableBorrowIndex)
-  │     └── Store scaledDebt = 500 / variableBorrowIndex
-  │
-  ├── userConfig.setBorrowing(reserveId, true)
-  │
-  ├── updateInterestRates(liquidityAdded=0, liquidityRemoved=500)
-  │     └── Recalculate rates (utilization increased → rates go up)
-  │
-  └── aToken.transferUnderlyingTo(user, 500 USDC)
-```
-
 ---
 
 ## Repay Flow
+
+<video src="../animations/final/repay_withdraw.webm" controls autoplay loop muted playsinline style="width:100%;max-width:800px;border-radius:8px;margin:20px 0"></video>
 
 ### The User's Perspective
 
@@ -726,34 +677,6 @@ if (params.useATokens) {
 
 This lets a user repay debt using their supply position in the same asset. For example, if you supplied 2000 USDC and borrowed 500 USDC, you can repay the 500 USDC borrow by burning 500 aUSDC, without needing to hold any USDC in your wallet.
 
-### The Complete Picture
-
-```
-User calls Pool.repay(USDC, type(uint256).max, VARIABLE, self)
-  │
-  ├── updateState()
-  │     └── Update both indexes, accrue treasury
-  │
-  ├── Read current debt: variableDebt = VariableDebtToken.balanceOf(user)
-  │     (e.g., 523.47 USDC including accrued interest)
-  │
-  ├── validateRepay()
-  │     ├── debt > 0 ✓
-  │     └── repay amount > 0 ✓
-  │
-  ├── paybackAmount = min(523.47, type(uint256).max) = 523.47
-  │
-  ├── VariableDebtToken.burn(user, 523.47, variableBorrowIndex)
-  │     └── Remove scaledDebt = 523.47 / variableBorrowIndex
-  │
-  ├── updateInterestRates(liquidityAdded=523.47, liquidityRemoved=0)
-  │     └── Recalculate rates (utilization decreased → rates go down)
-  │
-  ├── safeTransferFrom(user, aToken, 523.47 USDC)
-  │
-  └── userConfig.setBorrowing(reserveId, false)  // fully repaid
-```
-
 ---
 
 ## Withdraw Flow
@@ -871,35 +794,6 @@ This check only applies if the user has any active borrows (`userConfig.isBorrow
 If the user has borrows, the protocol calculates what the health factor would be after the withdrawal. If it would drop to or below `1.0`, the transaction reverts. This prevents users from creating undercollateralized positions by withdrawing too much collateral.
 
 This is why the health factor check happens **after** the aToken burn --- the protocol simulates the final state and validates it.
-
-### The Complete Picture
-
-```
-User calls Pool.withdraw(USDC, 500, self)
-  │
-  ├── updateState()
-  │     └── Update both indexes, accrue treasury
-  │
-  ├── Read balance: aToken.balanceOf(user) = 1060 aUSDC
-  │
-  ├── amountToWithdraw = min(500, 1060) = 500
-  │
-  ├── validateWithdraw()
-  │     ├── amount > 0 ✓
-  │     ├── amount <= balance ✓
-  │     └── reserve active, not paused ✓
-  │
-  ├── updateInterestRates(liquidityAdded=0, liquidityRemoved=500)
-  │     └── Recalculate rates (utilization increased → rates go up)
-  │
-  ├── aToken.burn(user, user, 500, liquidityIndex)
-  │     ├── Burn scaledAmount = 500 / liquidityIndex
-  │     └── Transfer 500 USDC to user
-  │
-  ├── (if full withdrawal) setUsingAsCollateral(false)
-  │
-  └── (if user has borrows) validate healthFactor > 1 ✓
-```
 
 ---
 

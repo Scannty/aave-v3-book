@@ -125,45 +125,7 @@ The actual logic for each operation lives in library contracts:
 
 Here is a simplified view of the contract dependency graph:
 
-```
-User
-  │
-  ▼
-Pool.sol (proxy)
-  │
-  ├──▶ SupplyLogic
-  ├──▶ BorrowLogic
-  ├──▶ LiquidationLogic
-  ├──▶ FlashLoanLogic
-  ├──▶ EModeLogic
-  ├──▶ BridgeLogic
-  │       │
-  │       ▼
-  │    ValidationLogic ◀── GenericLogic
-  │       │
-  │       ▼
-  │    ReserveLogic
-  │
-  ├──▶ aToken (per asset)
-  ├──▶ VariableDebtToken (per asset)
-  ├──▶ StableDebtToken (per asset)
-  │
-  ├──▶ AaveOracle
-  └──▶ ACLManager
-
-PoolConfigurator.sol (proxy)
-  │
-  ├──▶ ConfiguratorLogic
-  ├──▶ Pool
-  └──▶ ACLManager
-
-PoolAddressesProvider.sol
-  │
-  ├──▶ Pool address
-  ├──▶ PoolConfigurator address
-  ├──▶ AaveOracle address
-  └──▶ ACLManager address
-```
+<video src="../animations/final/architecture.webm" controls autoplay loop muted playsinline style="width:100%;max-width:800px;border-radius:8px;margin:20px 0"></video>
 
 ## The Reserve Data Structure
 

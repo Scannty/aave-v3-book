@@ -40,15 +40,7 @@ A `delegatecall` executes code in the **caller's** context:
 - `msg.sender` is preserved from the original transaction
 - `address(this)` is the **caller** (the proxy)
 
-```
-Normal call:
-User -> Proxy -> Implementation
-                 (uses Implementation's storage)
-
-delegatecall:
-User -> Proxy -> Implementation
-                 (uses Proxy's storage)
-```
+<video src="../animations/final/delegatecall.webm" controls autoplay loop muted playsinline style="width:100%;max-width:800px;border-radius:8px;margin:20px 0"></video>
 
 This means the proxy holds all the state (balances, mappings, etc.) while the implementation contract provides the logic. The implementation is stateless --- it only defines what to do, not where the data lives.
 

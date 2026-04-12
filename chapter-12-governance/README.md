@@ -269,37 +269,9 @@ function isPoolAdmin(address admin) external view override returns (bool) {
 
 ## 3. How Governance Updates Parameters
 
+<video src="../animations/final/governance_flow.webm" controls autoplay loop muted playsinline style="width:100%;max-width:800px;border-radius:8px;margin:20px 0"></video>
+
 In practice, most parameter changes on Aave V3 follow a governance flow. Let's walk through a concrete example: changing the USDC reserve factor from 10% to 15%.
-
-### The Governance Flow
-
-```
-Step 1: Proposal Creation
-  └─ An AAVE token holder creates an on-chain proposal
-     └─ The proposal contains a payload: a contract that will call
-        PoolConfigurator.setReserveFactor(USDC, 1500)
-
-Step 2: Voting
-  └─ AAVE token holders vote FOR or AGAINST
-     └─ Voting period: typically 3 days
-     └─ Quorum must be met
-
-Step 3: Timelock
-  └─ If the vote passes, the proposal enters a timelock period
-     └─ Typically 24 hours
-     └─ This gives users time to react (e.g., withdraw funds if they disagree)
-
-Step 4: Execution
-  └─ After the timelock, anyone can trigger execution
-     └─ The governance executor contract calls the payload
-     └─ The executor has POOL_ADMIN (or RISK_ADMIN) role on ACLManager
-     └─ The payload calls PoolConfigurator.setReserveFactor(USDC, 1500)
-
-Step 5: Effect
-  └─ The reserve factor is now 15%
-     └─ From this block forward, 15% of USDC borrow interest goes to treasury
-     └─ Suppliers now receive: borrowRate * utilization * (1 - 0.15)
-```
 
 ### The Payload Contract
 
@@ -452,20 +424,9 @@ This iterates through every reserve and sets the paused flag. It's a blunt instr
 
 ## 5. Upgrading Contracts
 
+<video src="../animations/final/proxy_upgrade.webm" controls autoplay loop muted playsinline style="width:100%;max-width:800px;border-radius:8px;margin:20px 0"></video>
+
 Aave V3's core contracts --- Pool and PoolConfigurator --- are deployed behind transparent proxies. This means their logic can be upgraded without changing the contract address or losing state.
-
-### The Proxy Architecture
-
-```
-                    ┌───────────────────────┐
- User calls ──────► │   Pool Proxy          │
-                    │   (address: 0xABC)    │
-                    │   storage lives here   │
-                    │                       │
-                    │   delegatecall ──────►│──► Pool Implementation V1
-                    │                       │    (stateless logic)
-                    └───────────────────────┘
-```
 
 The proxy stores all state (reserve data, user positions, configurations). The implementation contract contains only the logic. When an upgrade occurs, the proxy is pointed to a new implementation, but all state remains intact.
 
@@ -544,22 +505,9 @@ This is why Aave deployments use a **Guardian multisig** --- a multi-signature w
 
 ### The Two-Track System
 
-```
-FAST TRACK (minutes):
-  Guardian Multisig
-    └─ Has EMERGENCY_ADMIN role
-    └─ Can pause/unpause reserves
-    └─ Cannot change parameters or upgrade contracts
-    └─ Used for: active exploits, oracle failures, critical bugs
+**Fast Track (minutes):** Guardian Multisig with EMERGENCY_ADMIN role. Can pause/unpause reserves but cannot change parameters or upgrade contracts. Used for active exploits, oracle failures, and critical bugs.
 
-SLOW TRACK (days):
-  Governance (AAVE token holders)
-    └─ Controls the Executor contract
-    └─ Executor has POOL_ADMIN role
-    └─ Can do everything: configure reserves, upgrade contracts, list assets
-    └─ Enforced by timelock for safety
-    └─ Used for: parameter changes, new asset listings, upgrades
-```
+**Slow Track (days):** Governance (AAVE token holders) controls the Executor contract with POOL_ADMIN role. Can do everything: configure reserves, upgrade contracts, list assets. Enforced by timelock for safety.
 
 This separation ensures that emergency response is fast (multisig signers can respond in minutes) while permanent changes go through the full governance process (days of voting and timelock).
 
@@ -578,26 +526,9 @@ If the Guardian multisig were compromised, the attacker could only pause the pro
 
 ## 7. Portal: Cross-Chain Liquidity
 
+<video src="../animations/final/portal.webm" controls autoplay loop muted playsinline style="width:100%;max-width:800px;border-radius:8px;margin:20px 0"></video>
+
 Portal is an Aave V3 feature designed for cross-chain operations. It allows authorized bridge protocols to mint "unbacked" aTokens on one chain, burn them on another, and eventually back them with real assets. The goal is to facilitate seamless cross-chain liquidity movement.
-
-### How Portal Works
-
-```
-Chain A (Source):                          Chain B (Destination):
-┌─────────────────────┐                   ┌─────────────────────┐
-│ 1. User wants to    │                   │ 3. Bridge calls     │
-│    move 1000 USDC   │                   │    mintUnbacked()   │
-│    from A to B      │                   │    on Pool          │
-│                     │                   │                     │
-│ 2. Bridge burns     │   ──message──►    │ 4. Pool mints       │
-│    user's aUSDC     │                   │    unbacked aUSDC   │
-│    on chain A       │                   │    to the user      │
-│                     │                   │                     │
-│ 5. Bridge transfers │   ──bridge──►     │ 6. Bridge calls     │
-│    real USDC from   │                   │    backUnbacked()   │
-│    A to B           │                   │    to back the mint │
-└─────────────────────┘                   └─────────────────────┘
-```
 
 ### The BRIDGE Role
 
@@ -655,33 +586,15 @@ It's worth noting that Portal has seen limited adoption in practice. Cross-chain
 
 The governance architecture of Aave V3 can be summarized as a layered system of increasing privilege:
 
-```
-Layer 0: Anyone
-  └─ Can supply, borrow, repay, withdraw, liquidate, flash loan
-
-Layer 1: FLASH_BORROWER
-  └─ Zero-fee flash loans
-
-Layer 2: RISK_ADMIN
-  └─ Update risk parameters (LTV, thresholds, caps, reserve factor)
-  └─ Freeze reserves
-
-Layer 3: EMERGENCY_ADMIN (Guardian)
-  └─ Pause/unpause reserves and the entire pool
-  └─ Fast response to emergencies
-
-Layer 4: ASSET_LISTING_ADMIN
-  └─ List new assets
-
-Layer 5: POOL_ADMIN (Governance)
-  └─ Everything: configure, upgrade, list, pause
-  └─ Controlled by governance + timelock
-
-Layer 6: PoolAddressesProvider Owner (Governance)
-  └─ Upgrade Pool/PoolConfigurator implementations
-  └─ Change the ACL admin
-  └─ Nuclear option: swap out entire subsystems
-```
+| Layer | Role | Permissions |
+|-------|------|-------------|
+| 0 | Anyone | Supply, borrow, repay, withdraw, liquidate, flash loan |
+| 1 | FLASH_BORROWER | Zero-fee flash loans |
+| 2 | RISK_ADMIN | Update risk parameters, freeze reserves |
+| 3 | EMERGENCY_ADMIN (Guardian) | Pause/unpause reserves and pool |
+| 4 | ASSET_LISTING_ADMIN | List new assets |
+| 5 | POOL_ADMIN (Governance) | Everything: configure, upgrade, list, pause |
+| 6 | AddressesProvider Owner | Upgrade implementations, change ACL admin |
 
 Each layer has strictly more power than the one below it. Each is held by an entity appropriate to its level of trust: anonymous users at Layer 0, a fast-response multisig at Layer 3, and slow-but-secure governance at Layers 5 and 6.
 

@@ -21,7 +21,9 @@
   * [8. Flash Loans](chapter-8-flash-loans/README.md)
   * [9. E-Mode](chapter-9-emode/README.md)
   * [10. Isolation Mode](chapter-10-isolation-mode/README.md)
+  * [13. Caps, Siloed Borrowing, Repay with aTokens](chapter-13-risk-features/README.md)
 
 * **Protocol Economics**
   * [11. Reserves and Treasury](chapter-11-reserves-and-treasury/README.md)
   * [12. Governance and Admin](chapter-12-governance/README.md)
+  * [14. L2 Deployments and GHO](chapter-14-l2-and-gho/README.md)

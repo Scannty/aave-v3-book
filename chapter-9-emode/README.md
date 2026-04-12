@@ -6,6 +6,8 @@ But sometimes a user is borrowing one asset against another that is highly corre
 
 E-Mode (Efficiency Mode) solves this. It allows Aave to define categories of correlated assets and assign them boosted risk parameters --- higher LTV, higher liquidation threshold, and lower liquidation bonus. Users who opt into an E-Mode category get significantly better capital efficiency for positions involving correlated assets.
 
+<video src="../animations/final/emode_comparison.webm" controls autoplay loop muted playsinline style="width:100%;max-width:800px;border-radius:8px;margin:20px 0"></video>
+
 ---
 
 ## 1. What E-Mode Solves
@@ -99,6 +101,8 @@ E-Mode Category 2 (ETH correlated): LTV 93%, Liquidation Threshold 95%, Liquidat
 ---
 
 ## 3. How E-Mode Modifies Risk Parameters
+
+<video src="../animations/final/emode_barchart.webm" controls autoplay loop muted playsinline style="width:100%;max-width:800px;border-radius:8px;margin:20px 0"></video>
 
 When a user activates E-Mode for category X, the protocol changes how it evaluates their health factor. Instead of using each asset's default LTV and liquidation threshold, it substitutes the E-Mode category's values --- but only for assets that belong to the active category.
 

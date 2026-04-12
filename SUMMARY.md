@@ -27,7 +27,10 @@
 * [Chapter 9: E-Mode (Efficiency Mode)](chapter-9-emode/README.md)
 * [Chapter 10: Isolation Mode](chapter-10-isolation-mode/README.md)
 
+* [Chapter 13: Siloed Borrowing, Caps, and Repay with aTokens](chapter-13-risk-features/README.md)
+
 ## Protocol Economics and Governance
 
 * [Chapter 11: Reserves, Treasury, and Protocol Revenue](chapter-11-reserves-and-treasury/README.md)
 * [Chapter 12: Governance and Admin Controls](chapter-12-governance/README.md)
+* [Chapter 14: L2 Deployments, PriceOracleSentinel, and GHO](chapter-14-l2-and-gho/README.md)

@@ -1,0 +1,5 @@
+manim-env/
+animations/videos/
+__pycache__/
+*.pyc
+.DS_Store

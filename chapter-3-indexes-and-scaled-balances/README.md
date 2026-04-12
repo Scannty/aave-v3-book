@@ -2,6 +2,8 @@
 
 This chapter covers one of the most elegant design patterns in all of DeFi: how Aave V3 tracks interest accrual for thousands of users without touching their individual balances. If you understand this chapter, everything that follows --- aTokens, debt tokens, supply/borrow flows --- will make immediate sense.
 
+<video src="../animations/final/liquidity_index.webm" controls autoplay loop muted playsinline style="width:100%;max-width:800px;border-radius:8px;margin:20px 0"></video>
+
 ---
 
 ## The Problem: Updating Balances Doesn't Scale
@@ -190,6 +192,8 @@ The supply side uses linear interest because the error is negligible for the typ
 ---
 
 ## Scaled Balances
+
+<video src="../animations/final/scaled_balance.webm" controls autoplay loop muted playsinline style="width:100%;max-width:800px;border-radius:8px;margin:20px 0"></video>
 
 Now for the key mechanism. Aave never stores a user's "actual" balance. Instead, it stores a **scaled balance** --- the user's balance divided by the liquidity index at the time of their deposit (or the borrow index at the time of their borrow).
 

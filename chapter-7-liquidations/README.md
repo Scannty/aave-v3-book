@@ -79,13 +79,11 @@ Note: actual values vary by deployment and governance decisions. These are illus
 
 ## 2. The Health Factor
 
+<video src="../animations/final/health_factor.webm" controls autoplay loop muted playsinline style="width:100%;max-width:800px;border-radius:8px;margin:20px 0"></video>
+
 The health factor (HF) is the single number that tells you whether an account is solvent. It is defined as:
 
-```
-                Σ (collateral_i × price_i × liquidationThreshold_i)
-Health Factor = ──────────────────────────────────────────────────────
-                              totalDebt (in base currency)
-```
+**Health Factor = Sum(collateral × price × liquidationThreshold) / totalDebt**
 
 Where the sum runs over all assets the user has enabled as collateral.
 

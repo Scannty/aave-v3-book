@@ -8,6 +8,8 @@ Aave V3 achieves this with a **utilization-based variable interest rate model**.
 
 This chapter covers the math behind the rate model, the Solidity implementation, and a worked numerical example.
 
+<video src="../animations/final/interest_rate_curve.webm" controls autoplay loop muted playsinline style="width:100%;max-width:800px;border-radius:8px;margin:20px 0"></video>
+
 ## Utilization Rate
 
 The **utilization rate** is the single most important variable in the interest rate model. It measures what fraction of the available liquidity is currently being borrowed.
@@ -42,6 +44,8 @@ When `U = 0`, no one is borrowing — all supplied liquidity sits idle. When `U 
 
 ## The Kink Model
 
+<video src="../animations/final/utilization_shift.webm" controls autoplay loop muted playsinline style="width:100%;max-width:800px;border-radius:8px;margin:20px 0"></video>
+
 Aave uses a **piecewise linear** interest rate model with a "kink" — a point where the slope of the rate curve changes dramatically. In Aave's terminology, this kink point is called the **optimal utilization ratio** (`OPTIMAL_USAGE_RATIO`).
 
 The intuition: below optimal utilization, the protocol wants to gently encourage borrowing, so rates increase slowly. Above optimal utilization, the protocol wants to aggressively discourage further borrowing and incentivize repayment, so rates increase steeply.
@@ -65,26 +69,6 @@ Where:
 - `variableRateSlope1` — The rate of increase in the borrow rate below optimal utilization
 - `variableRateSlope2` — The rate of increase above optimal utilization (typically much steeper)
 - `U_optimal` — The target utilization ratio (typically 80-90% for stablecoins, 45-65% for volatile assets)
-
-Let us visualize this with typical stablecoin parameters:
-
-```
-Borrow Rate
-    │
-    │                                          ╱
-    │                                        ╱
-    │                                      ╱  slope2 (steep)
-    │                                    ╱
-    │                                  ╱
-    │                           ─────╱ ← kink at U_optimal
-    │                     ─────╱
-    │               ─────╱  slope1 (gentle)
-    │         ─────╱
-    │   ─────╱
-    │──╱ base rate
-    └──────────────────────────────────────── Utilization
-    0%                    U_optimal        100%
-```
 
 Below the kink, the rate curve is a gentle slope. The moment utilization crosses `U_optimal`, the slope changes to `variableRateSlope2`, which is typically 10-100x steeper than `variableRateSlope1`. This creates a strong economic incentive to keep utilization near or below the optimal point.
 
