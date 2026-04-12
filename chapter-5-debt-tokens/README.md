@@ -42,7 +42,7 @@ This is one of the most important design decisions in the protocol. Debt tokens 
 
 Imagine if debt tokens *were* transferable. A malicious user could:
 
-1. Deposit collateral (say, 2 ETH worth $4,000)
+1. Deposit collateral (say, 2 ETH worth \$4,000)
 2. Borrow 2,000 USDC against it
 3. Transfer the 2,000 debt tokens to a random address --- a wallet with no collateral
 4. Walk away with the 2,000 USDC, free and clear
@@ -65,15 +65,11 @@ Variable debt tokens use the same scaled balance mechanism as aTokens, but with 
 
 The pattern is identical to aTokens:
 
-```
-actualDebt = scaledDebtBalance × currentVariableBorrowIndex
-```
+$$actualDebt = scaledDebtBalance \times currentVariableBorrowIndex$$
 
 When you borrow 1,000 USDC and the variable borrow index is 1.02:
 
-```
-scaledDebt = 1,000 / 1.02 = 980.39
-```
+$$scaledDebt = \frac{1{,}000}{1.02} = 980.39$$
 
 The contract stores 980.39 as your scaled debt balance. As interest accrues, the variable borrow index grows:
 
@@ -138,17 +134,13 @@ Since every stable borrower can have a different rate, the protocol must track a
 
 When a new stable borrow occurs, the average is recalculated:
 
-```
-newAverage = (oldAverage × oldTotalDebt + newRate × newBorrowAmount) / newTotalDebt
-```
+$$newAverage = \frac{oldAverage \times oldTotalDebt + newRate \times newBorrowAmount}{newTotalDebt}$$
 
 ### Rate Blending on Additional Borrows
 
 If a user already has stable debt and borrows more, their personal rate is blended. Suppose you borrowed 1,000 USDC at 4% and now borrow another 500 USDC at 6%:
 
-```
-newRate = (4% × 1,000 + 6% × 500) / 1,500 = 4.67%
-```
+$$newRate = \frac{4\% \times 1{,}000 + 6\% \times 500}{1{,}500} = 4.67\%$$
 
 Your entire stable debt position now compounds at 4.67%.
 
@@ -250,9 +242,7 @@ Events use **actual** (non-scaled) amounts. A borrow of 1,000 USDC emits a Trans
 
 The total scaled supply of the variable debt token, multiplied by the current variable borrow index, gives the **total variable debt** across all borrowers:
 
-```
-totalVariableDebt = scaledTotalSupply × variableBorrowIndex
-```
+$$totalVariableDebt = scaledTotalSupply \times variableBorrowIndex$$
 
 This number is central to everything:
 

@@ -110,9 +110,9 @@ Different Chainlink feeds use different numbers of decimals:
 
 | Feed | Decimals | Example answer | Actual price |
 |------|----------|---------------|--------------|
-| ETH/USD | 8 | 350000000000 | $3,500.00 |
-| BTC/USD | 8 | 6500000000000 | $65,000.00 |
-| USDC/USD | 8 | 100000000 | $1.00 |
+| ETH/USD | 8 | 350000000000 | \$3,500.00 |
+| BTC/USD | 8 | 6500000000000 | \$65,000.00 |
+| USDC/USD | 8 | 100000000 | \$1.00 |
 | ETH/BTC | 18 | 53800000000000000 | 0.0538 BTC |
 
 USD-denominated feeds typically use **8 decimals**. ETH-denominated feeds typically use **18 decimals**.

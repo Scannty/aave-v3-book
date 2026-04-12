@@ -58,7 +58,7 @@ From this moment, you are earning interest. Your aUSDC balance increases every s
 | Reserve is not frozen | Frozen reserves reject new deposits (but allow withdrawals) |
 | Supply cap not exceeded | Governance-set limit on total deposits per asset           |
 
-Supply caps are a V3 innovation. They prevent any single asset from dominating the protocol's risk exposure. If the USDC supply cap is $500M and there is already $499M deposited, you can deposit at most $1M more.
+Supply caps are a V3 innovation. They prevent any single asset from dominating the protocol's risk exposure. If the USDC supply cap is \$500M and there is already \$499M deposited, you can deposit at most \$1M more.
 
 **Step 3: Update interest rates.** Adding liquidity decreases utilization, which typically decreases borrow and supply rates. The protocol recalculates rates now, using the new liquidity level.
 
@@ -100,11 +100,7 @@ The protocol must ensure, at the moment of borrowing, that you have enough colla
 
 Before any borrow is approved, the protocol computes:
 
-```
-                  totalCollateral × weightedLiquidationThreshold
-healthFactor = ──────────────────────────────────────────────────
-                              totalDebt
-```
+$$HF = \frac{\sum(collateral_i \times price_i \times liqThreshold_i)}{totalDebt}$$
 
 All values are converted to a common base currency (typically USD) using oracle prices. The **liquidation threshold** is a per-asset parameter (e.g., 85% for ETH) that reflects how much of the collateral's value is considered "safe."
 
@@ -112,29 +108,21 @@ The health factor must remain above 1.0 after the new borrow. If it would not, t
 
 ### Example: The Health Factor in Action
 
-You have deposited 10 ETH (worth $20,000). ETH has a liquidation threshold of 85%.
+You have deposited 10 ETH (worth \$20,000). ETH has a liquidation threshold of 85%.
 
-```
-Collateral value for health factor purposes: $20,000 × 85% = $17,000
-```
+$$\$20{,}000 \times 85\% = \$17{,}000$$
 
 You want to borrow 10,000 USDC:
 
-```
-healthFactor = $17,000 / $10,000 = 1.70  ✓  (above 1.0 --- borrow allowed)
-```
+$$HF = \frac{\$17{,}000}{\$10{,}000} = 1.70 \quad \checkmark \text{ (above 1.0 --- borrow allowed)}$$
 
 You want to borrow 16,000 USDC:
 
-```
-healthFactor = $17,000 / $16,000 = 1.0625  ✓  (barely above 1.0 --- risky but allowed)
-```
+$$HF = \frac{\$17{,}000}{\$16{,}000} = 1.0625 \quad \checkmark \text{ (barely above 1.0 --- risky but allowed)}$$
 
 You want to borrow 18,000 USDC:
 
-```
-healthFactor = $17,000 / $18,000 = 0.944  ✗  (below 1.0 --- borrow rejected)
-```
+$$HF = \frac{\$17{,}000}{\$18{,}000} = 0.944 \quad \times \text{ (below 1.0 --- borrow rejected)}$$
 
 The protocol also checks against the **LTV (Loan-to-Value)** ratio, which is typically lower than the liquidation threshold. LTV determines the maximum you can borrow; liquidation threshold determines when you get liquidated. The gap between them provides a buffer.
 
@@ -234,11 +222,9 @@ In this flow, the protocol burns aTokens from the repayer instead of pulling und
 
 Withdrawing is the reverse of supplying: you return aTokens to the protocol and receive your underlying assets (original deposit plus interest).
 
-```
-Deposited 10,000 USDC 6 months ago at ~3% APY
-Your aUSDC balance is now 10,150
-You withdraw 10,150 aUSDC and receive 10,150 USDC
-```
+$$\text{Deposited } \$10{,}000 \text{ USDC 6 months ago at } {\sim}3\% \text{ APY}$$
+
+$$\text{aUSDC balance now} = 10{,}150 \implies \text{withdraw } 10{,}150 \text{ aUSDC, receive } 10{,}150 \text{ USDC}$$
 
 Like repaying, you can pass `type(uint256).max` to withdraw everything.
 
@@ -246,17 +232,13 @@ Like repaying, you can pass `type(uint256).max` to withdraw everything.
 
 Here is the critical difference between withdrawals and supplies: if you have active borrows, withdrawing collateral reduces the backing for your debt. The protocol must prevent you from creating an undercollateralized position.
 
-**Example:** You have 10 ETH ($20,000) as collateral and 12,000 USDC borrowed.
+**Example:** You have 10 ETH (\$20,000) as collateral and 12,000 USDC borrowed.
 
-```
-Current health factor: ($20,000 × 85%) / $12,000 = 1.42  ✓
-```
+$$HF = \frac{\$20{,}000 \times 85\%}{\$12{,}000} = 1.42 \quad \checkmark$$
 
-You try to withdraw 5 ETH ($10,000):
+You try to withdraw 5 ETH (\$10,000):
 
-```
-After withdrawal: ($10,000 × 85%) / $12,000 = 0.71  ✗  REVERTS
-```
+$$HF = \frac{\$10{,}000 \times 85\%}{\$12{,}000} = 0.71 \quad \times \text{ REVERTS}$$
 
 The protocol computes the post-withdrawal health factor and rejects the transaction if it would drop to or below 1.0. You cannot extract collateral that is actively supporting debt.
 
@@ -296,9 +278,7 @@ Before any token operation, the protocol must bring its indexes up to date. Inde
 
 Why? Because minting and burning depend on the current index:
 
-```
-scaledTokens = amount / currentIndex
-```
+$$scaledTokens = \frac{amount}{currentIndex}$$
 
 A stale index means minting or burning the wrong number of scaled tokens. This would create an accounting error that compounds over time. Even a tiny error, accumulated across millions of transactions, could create a serious discrepancy.
 

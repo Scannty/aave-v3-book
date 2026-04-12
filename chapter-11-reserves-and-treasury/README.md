@@ -26,16 +26,14 @@ The reserve factor is the most important revenue parameter. It is, conceptually,
 
 ### The Split
 
-If the USDC reserve factor is 10%, then for every $100 of interest paid by USDC borrowers:
+If the USDC reserve factor is 10%, then for every \$100 of interest paid by USDC borrowers:
 
-- **$90 goes to USDC suppliers** (through the rising liquidity index)
-- **$10 goes to the Aave treasury** (as newly minted aUSDC)
+- **\$90 goes to USDC suppliers** (through the rising liquidity index)
+- **\$10 goes to the Aave treasury** (as newly minted aUSDC)
 
 This directly affects the supply rate formula from Chapter 2:
 
-```
-supplyRate = borrowRate * utilizationRate * (1 - reserveFactor)
-```
+$$supplyRate = borrowRate \times utilizationRate \times (1 - reserveFactor)$$
 
 The `(1 - reserveFactor)` term is the protocol's take. A higher reserve factor means more revenue for Aave but lower yields for suppliers. Governance must balance two competing interests: protocol sustainability versus competitive supplier yields. Set the reserve factor too high and suppliers leave for better yields elsewhere. Set it too low and the treasury cannot fund development, audits, and grants.
 
@@ -52,15 +50,15 @@ The economic logic is straightforward: riskier assets cost the protocol more if 
 
 ### A Concrete Example
 
-Consider a market with $100 million of outstanding USDC borrows at a 5% average borrow rate and a 10% reserve factor:
+Consider a market with \$100 million of outstanding USDC borrows at a 5% average borrow rate and a 10% reserve factor:
 
-```
-Annual borrow interest paid       = $100M * 5%  = $5,000,000
-Treasury's share (10%)            = $5,000,000 * 10%  = $500,000/year
-Suppliers receive (90%)           = $5,000,000 * 90%  = $4,500,000/year
-```
+$$\text{Annual borrow interest paid} = \$100M \times 5\% = \$5{,}000{,}000$$
 
-That $500,000 per year is for USDC alone. Multiply across dozens of assets and multiple chain deployments, and the reserve factor becomes a substantial revenue engine.
+$$\text{Treasury's share (10\%)} = \$5{,}000{,}000 \times 10\% = \$500{,}000/\text{year}$$
+
+$$\text{Suppliers receive (90\%)} = \$5{,}000{,}000 \times 90\% = \$4{,}500{,}000/\text{year}$$
+
+That \$500,000 per year is for USDC alone. Multiply across dozens of assets and multiple chain deployments, and the reserve factor becomes a substantial revenue engine.
 
 ---
 
@@ -88,15 +86,15 @@ The treasury's accrued revenue is stored as a "scaled" amount --- divided by the
 
 Suppose between two consecutive interactions with the USDC reserve:
 
-```
-Total USDC borrow debt grew from    $1,000,000.00  to  $1,000,095.24
-Interest accrued in this period    = $95.24
-Reserve factor                     = 10%
-Treasury's share                   = $95.24 * 10% = $9.52
-Suppliers received                 = $95.24 * 90% = $85.72
-```
+$$\text{Total USDC borrow debt grew from } \$1{,}000{,}000.00 \text{ to } \$1{,}000{,}095.24$$
 
-The $9.52 is added (in scaled form) to the `accruedToTreasury` counter. When the counter is eventually realized, aUSDC tokens are minted to the treasury address for the full accumulated amount.
+$$\text{Interest accrued} = \$95.24$$
+
+$$\text{Treasury's share} = \$95.24 \times 10\% = \$9.52$$
+
+$$\text{Suppliers received} = \$95.24 \times 90\% = \$85.72$$
+
+The \$9.52 is added (in scaled form) to the `accruedToTreasury` counter. When the counter is eventually realized, aUSDC tokens are minted to the treasury address for the full accumulated amount.
 
 ### The Treasury Earns Compound Interest
 
@@ -105,7 +103,7 @@ Here is the subtle but powerful implication: once the treasury holds aUSDC, thos
 - **Direct revenue**: new aTokens minted from the reserve factor
 - **Passive income**: interest earned on the treasury's existing aToken holdings
 
-If the treasury holds $10 million of aUSDC and the USDC supply rate is 3%, it earns $300,000 per year in passive interest --- on top of new revenue flowing in from the reserve factor.
+If the treasury holds \$10 million of aUSDC and the USDC supply rate is 3%, it earns \$300,000 per year in passive interest --- on top of new revenue flowing in from the reserve factor.
 
 ---
 
@@ -126,11 +124,11 @@ If `flashLoanPremiumTotal` is 9 (0.09%) and `flashLoanPremiumToProtocol` is 0, t
 
 A flash loan of 10,000,000 USDC with a 0.09% total premium and 0.03% to the protocol:
 
-```
-Total premium       = 10,000,000 * 0.09% = $9,000
-To suppliers        = 10,000,000 * 0.06% = $6,000
-To treasury         = 10,000,000 * 0.03% = $3,000
-```
+$$\text{Total premium} = 10{,}000{,}000 \times 0.09\% = \$9{,}000$$
+
+$$\text{To suppliers} = 10{,}000{,}000 \times 0.06\% = \$6{,}000$$
+
+$$\text{To treasury} = 10{,}000{,}000 \times 0.03\% = \$3{,}000$$
 
 The supplier portion stays in the aToken contract automatically (it increases the value of all aUSDC). The treasury portion is added to the `accruedToTreasury` counter, just like reserve factor revenue.
 
@@ -159,13 +157,13 @@ A position is liquidated with the following parameters:
 | Liquidation bonus | 50 USDC worth of ETH |
 | Liquidation protocol fee | 10% of the bonus |
 
-```
-Protocol's cut      = $50 * 10%  = $5 (sent to treasury as aTokens)
-Liquidator receives = $1,050 - $5 = $1,045 worth of ETH
-Liquidator's profit = $1,045 - $1,000 = $45 (instead of $50)
-```
+$$\text{Protocol's cut} = \$50 \times 10\% = \$5 \text{ (sent to treasury as aTokens)}$$
 
-The liquidator still profits handsomely ($45 on a $1,000 liquidation), but the protocol captures $5. During market crashes, when hundreds of millions of dollars of positions are liquidated, this adds up quickly.
+$$\text{Liquidator receives} = \$1{,}050 - \$5 = \$1{,}045 \text{ worth of ETH}$$
+
+$$\text{Liquidator's profit} = \$1{,}045 - \$1{,}000 = \$45 \text{ (instead of \$50)}$$
+
+The liquidator still profits handsomely (\$45 on a \$1,000 liquidation), but the protocol captures \$5. During market crashes, when hundreds of millions of dollars of positions are liquidated, this adds up quickly.
 
 ### Revenue Characteristics
 
@@ -244,24 +242,25 @@ Let's trace the complete revenue lifecycle for a single reserve (USDC) over one 
 
 **Week 1-4: Interest accrues**
 
-$200 million of USDC is borrowed at an average rate of 4%. Over a month, approximately $667,000 of interest accrues. With a 10% reserve factor, the treasury's share is $66,700. This accumulates in the `accruedToTreasury` counter.
+\$200 million of USDC is borrowed at an average rate of 4%. Over a month, approximately \$667,000 of interest accrues. With a 10% reserve factor, the treasury's share is \$66,700. This accumulates in the `accruedToTreasury` counter.
 
 **Periodically: Flash loans occur**
 
-50 flash loans totaling $500 million in USDC are executed, each paying a 0.09% premium. Total premiums: $450,000. If the protocol's share is one-third, that is $150,000 to the treasury.
+50 flash loans totaling \$500 million in USDC are executed, each paying a 0.09% premium. Total premiums: \$450,000. If the protocol's share is one-third, that is \$150,000 to the treasury.
 
 **During a market dip: Liquidations happen**
 
-$10 million of positions are liquidated with a 5% bonus and a 10% protocol fee. The bonus is $500,000, of which $50,000 goes to the treasury.
+\$10 million of positions are liquidated with a 5% bonus and a 10% protocol fee. The bonus is \$500,000, of which \$50,000 goes to the treasury.
 
 **Monthly total for USDC alone:**
 
-```
-Reserve factor revenue       = $66,700
-Flash loan revenue           = $150,000
-Liquidation protocol fees    = $50,000
-Total                        = $266,700
-```
+$$\text{Reserve factor revenue} = \$66{,}700$$
+
+$$\text{Flash loan revenue} = \$150{,}000$$
+
+$$\text{Liquidation protocol fees} = \$50{,}000$$
+
+$$\text{Total} = \$266{,}700$$
 
 And this is for a single asset on a single chain. Across all assets and all deployments, Aave generates millions in monthly revenue, all flowing into a treasury that earns compound interest on its holdings.
 

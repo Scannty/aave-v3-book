@@ -29,7 +29,7 @@ The solution is **indexes** and **scaled balances**.
 
 The **liquidity index** is a single number, stored once per asset, that encodes the entire history of supply-side interest since the reserve was created. It starts at 1.0 and only ever increases.
 
-Think of it as an exchange rate between "original dollars" and "current dollars." If the liquidity index is 1.08, then one dollar deposited at the very beginning of the protocol is now worth $1.08. The index captures every second of interest that has ever accrued, compressed into one number.
+Think of it as an exchange rate between "original dollars" and "current dollars." If the liquidity index is 1.08, then one dollar deposited at the very beginning of the protocol is now worth \$1.08. The index captures every second of interest that has ever accrued, compressed into one number.
 
 Every reserve has its own liquidity index. USDC has one, ETH has one, WBTC has one. They grow at different rates because each market has different utilization and interest rates.
 
@@ -43,26 +43,21 @@ Every reserve has its own liquidity index. USDC has one, ETH has one, WBTC has o
 
 Here is the key insight. Aave never stores your "actual" balance. Instead, it stores a **scaled balance** --- your deposit amount divided by the liquidity index at the moment you deposited.
 
-```
-scaledBalance = depositAmount / liquidityIndexAtTimeOfDeposit
-```
+$$scaledBalance = \frac{depositAmount}{liquidityIndex_{deposit}}$$
 
 To recover your actual balance at any point in the future, you multiply by the *current* index:
 
-```
-actualBalance = scaledBalance * currentLiquidityIndex
-```
+$$actualBalance = scaledBalance \times currentLiquidityIndex$$
 
 Why does this work? Because the index is a cumulative multiplier. Dividing by the index at deposit time "normalizes" your balance to the protocol's starting point. Multiplying by the current index then applies all the interest that has accrued since you deposited.
 
-Here is the math made explicit. Say you deposit $1,000 when the index is 1.05, and later the index reaches 1.10:
+Here is the math made explicit. Say you deposit \$1,000 when the index is 1.05, and later the index reaches 1.10:
 
-```
-scaledBalance = 1000 / 1.05 = 952.38
-actualBalance = 952.38 * 1.10 = 1047.62
-```
+$$scaledBalance = \frac{1000}{1.05} = 952.38$$
 
-You earned $47.62, which is exactly the interest that accrued between index 1.05 and 1.10. The ratio `1.10 / 1.05 = 1.0476` represents a 4.76% return over that period, regardless of how long it took or what the rates were along the way.
+$$actualBalance = 952.38 \times 1.10 = 1047.62$$
+
+You earned \$47.62, which is exactly the interest that accrued between index 1.05 and 1.10. The ratio `1.10 / 1.05 = 1.0476` represents a 4.76% return over that period, regardless of how long it took or what the rates were along the way.
 
 The same principle applies to debt. When you borrow, your debt is divided by the variable borrow index. To find your current debt, multiply by the current borrow index.
 
@@ -76,9 +71,7 @@ Let's trace through a full scenario with actual numbers.
 
 The reserve just launched. The liquidity index is 1.000000.
 
-```
-Alice's scaledBalance = 1000 / 1.000000 = 1000.00
-```
+$$scaledBalance_{Alice} = \frac{1000}{1.000000} = 1000.00$$
 
 | User  | Scaled Balance | Index | Actual Balance |
 |-------|---------------|-------|----------------|
@@ -88,23 +81,19 @@ Alice's scaledBalance = 1000 / 1.000000 = 1000.00
 
 Various users have been borrowing USDC and paying interest. The liquidity index has grown to 1.050000. Alice has not interacted with the protocol at all. Her stored scaled balance is still exactly 1,000.00. But if anyone calls `balanceOf(Alice)`:
 
-```
-actualBalance = 1000.00 * 1.050000 = 1,050.00
-```
+$$actualBalance = 1000.00 \times 1.050000 = 1{,}050.00$$
 
 | User  | Scaled Balance | Index | Actual Balance |
 |-------|---------------|-------|----------------|
 | Alice | 1,000.00 | 1.050000 | 1,050.00 |
 
-Alice earned $50 in interest without a single transaction. No one updated her balance. No one ran a batch job. The protocol simply updated the index (one storage write), and Alice's balance grew automatically.
+Alice earned \$50 in interest without a single transaction. No one updated her balance. No one ran a batch job. The protocol simply updated the index (one storage write), and Alice's balance grew automatically.
 
 ### T=1: Bob Deposits 2,000 USDC
 
 Bob deposits while the index is 1.050000:
 
-```
-Bob's scaledBalance = 2000 / 1.050000 = 1,904.76
-```
+$$scaledBalance_{Bob} = \frac{2000}{1.050000} = 1{,}904.76$$
 
 | User  | Scaled Balance | Index | Actual Balance |
 |-------|---------------|-------|----------------|
@@ -120,9 +109,9 @@ Notice that Bob's scaled balance (1,904.76) is less than his deposit (2,000). Th
 | Alice | 1,000.00 | 1.100000 | 1,100.00 |
 | Bob | 1,904.76 | 1.100000 | 2,095.24 |
 
-**Alice** has earned $100 total (10% on her original $1,000), reflecting the full period since she deposited.
+**Alice** has earned \$100 total (10% on her original \$1,000), reflecting the full period since she deposited.
 
-**Bob** has earned $95.24 (about 4.76% on his original $2,000), reflecting only the period since *he* deposited. The index went from 1.05 to 1.10 during Bob's time in the pool, a 4.76% increase.
+**Bob** has earned \$95.24 (about 4.76% on his original \$2,000), reflecting only the period since *he* deposited. The index went from 1.05 to 1.10 during Bob's time in the pool, a 4.76% increase.
 
 The system perfectly tracks different entry times using a single global index. No per-user timestamp, no per-user rate tracking.
 
@@ -130,16 +119,13 @@ The system perfectly tracks different entry times using a single global index. N
 
 When Alice withdraws, the protocol burns the equivalent scaled amount:
 
-```
-scaledAmountToBurn = 500 / 1.100000 = 454.55
-Alice's new scaledBalance = 1000.00 - 454.55 = 545.45
-```
+$$scaledAmountToBurn = \frac{500}{1.100000} = 454.55$$
+
+$$scaledBalance_{Alice}^{new} = 1000.00 - 454.55 = 545.45$$
 
 Alice receives 500 USDC in her wallet. Her remaining position:
 
-```
-actualBalance = 545.45 * 1.100000 = 600.00 USDC
-```
+$$actualBalance = 545.45 \times 1.100000 = 600.00 \text{ USDC}$$
 
 This makes sense: Alice had 1,100.00 USDC in the protocol, withdrew 500.00, and has 600.00 remaining.
 
@@ -224,15 +210,11 @@ This is also why aToken balances appear to change continuously in wallet UIs tha
 
 Everything described above applies symmetrically to debt. When you borrow:
 
-```
-scaledDebt = borrowAmount / currentVariableBorrowIndex
-```
+$$scaledDebt = \frac{borrowAmount}{variableBorrowIndex_{current}}$$
 
 When you (or anyone) queries your debt:
 
-```
-actualDebt = scaledDebt * currentVariableBorrowIndex
-```
+$$actualDebt = scaledDebt \times variableBorrowIndex_{current}$$
 
 Your debt grows over time as the borrow index increases, just as supply balances grow as the liquidity index increases. The borrow index simply grows faster (higher rates), so debt accumulates more quickly than supply interest.
 

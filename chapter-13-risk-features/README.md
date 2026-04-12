@@ -10,7 +10,7 @@ These features are small in scope but significant in practice. Caps prevent conc
 
 ### The Problem They Solve
 
-Imagine Aave lists a new governance token, TOKEN-X, with $20 million of on-chain liquidity. Without limits, a whale could supply $500 million of TOKEN-X as collateral, borrow $300 million of USDC against it, and then either manipulate TOKEN-X's price or simply wait for it to crash. Even without manipulation, the protocol would hold more TOKEN-X than the market could absorb in a liquidation. Liquidators could not sell the seized collateral without crashing the price further, creating a cascading liquidation spiral and ultimately bad debt that the protocol cannot recover.
+Imagine Aave lists a new governance token, TOKEN-X, with \$20 million of on-chain liquidity. Without limits, a whale could supply \$500 million of TOKEN-X as collateral, borrow \$300 million of USDC against it, and then either manipulate TOKEN-X's price or simply wait for it to crash. Even without manipulation, the protocol would hold more TOKEN-X than the market could absorb in a liquidation. Liquidators could not sell the seized collateral without crashing the price further, creating a cascading liquidation spiral and ultimately bad debt that the protocol cannot recover.
 
 Supply and borrow caps solve this by putting hard limits on how much of any single asset can flow through the protocol.
 

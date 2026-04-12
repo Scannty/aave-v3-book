@@ -62,9 +62,7 @@ The rebasing magic comes from a simple multiplication. Aave does not actually up
 
 Every time you (or anyone) calls `balanceOf()`, the contract computes:
 
-```
-actualBalance = scaledBalance × currentLiquidityIndex
-```
+$$actualBalance = scaledBalance \times currentLiquidityIndex$$
 
 That is the entire trick. The scaled balance is fixed (it only changes on deposit/withdraw/transfer). The liquidity index grows continuously. Multiply them together, and you get a balance that increases over time.
 
@@ -72,9 +70,7 @@ That is the entire trick. The scaled balance is fixed (it only changes on deposi
 
 Alice deposits 1,000 USDC when the liquidity index is 1.05:
 
-```
-scaledBalance = 1,000 / 1.05 = 952.38
-```
+$$scaledBalance = \frac{1{,}000}{1.05} = 952.38$$
 
 The contract stores 952.38 as Alice's scaled balance. Now time passes and the index grows:
 
@@ -130,15 +126,11 @@ Aave is a protocol, not a charity. A portion of all interest paid by borrowers g
 
 Each asset in Aave has a **reserve factor** --- a governance-set percentage (typically 10--20%) that determines the protocol's share of borrower interest.
 
-```
-Interest paid by borrowers in one day:
-  $1,000,000 total variable debt × 5% APR × (1/365) = $136.99
+$$\text{Interest paid by borrowers in one day} = \$1{,}000{,}000 \times 5\% \times \frac{1}{365} = \$136.99$$
 
-Treasury's share (20% reserve factor):
-  $136.99 × 20% = $27.40
-```
+$$\text{Treasury's share (20\% reserve factor)} = \$136.99 \times 20\% = \$27.40$$
 
-This $27.40 is recorded as aTokens owed to the treasury. The treasury is economically equivalent to another depositor --- its aToken position also earns interest over time.
+This \$27.40 is recorded as aTokens owed to the treasury. The treasury is economically equivalent to another depositor --- its aToken position also earns interest over time.
 
 ### Batch Minting for Gas Efficiency
 

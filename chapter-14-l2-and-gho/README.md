@@ -18,16 +18,16 @@ This creates a specific and unfair danger for lending protocols.
 
 | Time | Event | Consequence |
 |---|---|---|
-| 2:00 PM | Arbitrum sequencer goes offline. ETH = $2,000 | Users cannot transact on Arbitrum |
-| 2:00 - 4:00 PM | ETH drops to $1,700 on mainnet and other markets | Arbitrum oracle still shows $2,000 (stale) |
-| 4:00 PM | Sequencer comes back online. Oracle updates to $1,700 | Hundreds of positions are suddenly underwater |
+| 2:00 PM | Arbitrum sequencer goes offline. ETH = \$2,000 | Users cannot transact on Arbitrum |
+| 2:00 - 4:00 PM | ETH drops to \$1,700 on mainnet and other markets | Arbitrum oracle still shows \$2,000 (stale) |
+| 4:00 PM | Sequencer comes back online. Oracle updates to \$1,700 | Hundreds of positions are suddenly underwater |
 | 4:00:01 PM | Liquidation bots liquidate every unhealthy position | Borrowers had zero chance to add collateral or repay |
 
 The borrowers liquidated at 4:00:01 PM did nothing wrong. They may have had ample collateral buffer before the crash. They would have added collateral or repaid debt if they could have. But the sequencer was down --- they were locked out. Liquidating them instantly upon sequencer recovery is unfair and can cascade into a mass liquidation event.
 
 ### Why This Does Not Happen on L1
 
-On Ethereum mainnet, if ETH drops from $2,000 to $1,700, users can react in real time. They can submit transactions to add collateral, repay debt, or close positions. The price decline and the ability to respond happen on the same chain at the same time. On an L2 with a down sequencer, the price decline happens externally while users are locked out locally.
+On Ethereum mainnet, if ETH drops from \$2,000 to \$1,700, users can react in real time. They can submit transactions to add collateral, repay debt, or close positions. The price decline and the ability to respond happen on the same chain at the same time. On an L2 with a down sequencer, the price decline happens externally while users are locked out locally.
 
 ---
 
@@ -64,7 +64,7 @@ The logic is simple but precise:
 This is a subtle but important point. Consider the attack without borrow blocking:
 
 1. Sequencer comes back online. Oracle still shows stale prices.
-2. An attacker's collateral is valued at $2,000 (stale) when the real market price is $1,700.
+2. An attacker's collateral is valued at \$2,000 (stale) when the real market price is \$1,700.
 3. The attacker borrows against the inflated collateral value, extracting real value from the protocol.
 4. Prices update. The attacker's position is underwater, but they have already pocketed the difference.
 
@@ -110,9 +110,9 @@ This is a profound economic difference. With regular assets, Aave is an intermed
 
 | Metric | Regular Asset (USDC) | GHO |
 |---|---|---|
-| $500M outstanding at 3% borrow rate | $15M annual interest | $15M annual interest |
-| Treasury's share | $1.5M (10% reserve factor) | **$15M (100%)** |
-| Suppliers' share | $13.5M | $0 (no suppliers) |
+| \$500M outstanding at 3% borrow rate | \$15M annual interest | \$15M annual interest |
+| Treasury's share | \$1.5M (10% reserve factor) | **\$15M (100%)** |
+| Suppliers' share | \$13.5M | \$0 (no suppliers) |
 
 The same amount of outstanding debt generates **10x more treasury revenue** with GHO than with a regular asset. This makes GHO one of the most important economic primitives in the Aave ecosystem.
 
@@ -129,7 +129,7 @@ The Aave V3 Pool on Ethereum is the primary Facilitator. But governance can appr
 
 ### Why the Facilitator Model Matters
 
-The Facilitator model is a risk containment mechanism. Each Facilitator is independently capped. If a Facilitator were compromised (a bug in its code, a governance attack), the damage is bounded by its bucket capacity. A Facilitator with a $50 million bucket capacity can at most create $50 million of unbacked GHO, regardless of what goes wrong.
+The Facilitator model is a risk containment mechanism. Each Facilitator is independently capped. If a Facilitator were compromised (a bug in its code, a governance attack), the damage is bounded by its bucket capacity. A Facilitator with a \$50 million bucket capacity can at most create \$50 million of unbacked GHO, regardless of what goes wrong.
 
 This is fundamentally different from a design where a single contract controls all minting. The Facilitator model distributes minting authority while containing the blast radius of any single failure.
 
@@ -143,7 +143,7 @@ Instead, the GHO borrow rate is set directly by governance through a custom inte
 - More circulating GHO means deeper markets, tighter peg stability, and more integrations
 - Governance adjusts the rate based on peg stability, market conditions, and treasury revenue needs
 
-If GHO trades below $1 (too much supply), governance can raise the borrow rate to discourage minting. If GHO trades above $1 (too much demand for too little supply), governance can lower the rate to encourage more minting. The borrow rate becomes a monetary policy tool.
+If GHO trades below \$1 (too much supply), governance can raise the borrow rate to discourage minting. If GHO trades above \$1 (too much demand for too little supply), governance can lower the rate to encourage more minting. The borrow rate becomes a monetary policy tool.
 
 ### The stkAAVE Discount: Tying GHO to the AAVE Economy
 
@@ -166,11 +166,11 @@ The mechanics:
 | Discounted GHO capacity | 50 * 100 = 5,000 GHO |
 | User's GHO debt | 5,000 GHO |
 
-```
-Discounted rate = 3.00% * (1 - 20%) = 2.40%
-Annual interest = 5,000 * 2.40% = $120 (instead of $150 at full rate)
-Savings = $30/year
-```
+$$\text{Discounted rate} = 3.00\% \times (1 - 20\%) = 2.40\%$$
+
+$$\text{Annual interest} = 5{,}000 \times 2.40\% = \$120 \text{ (instead of \$150 at full rate)}$$
+
+$$\text{Savings} = \$30/\text{year}$$
 
 If the user's GHO debt were 10,000 GHO (double the discounted capacity), only half the debt would be discounted, giving an effective rate of about 2.70%.
 

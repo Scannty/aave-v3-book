@@ -11,9 +11,9 @@ That mechanism is **liquidation**.
 Unlike traditional lending (where credit scores and legal enforcement exist), DeFi lending is **overcollateralized**. This means the borrower must deposit more value than they borrow.
 
 Example:
-- A user deposits $10,000 worth of ETH
-- The protocol allows them to borrow up to $8,000 worth of USDC
-- The extra $2,000 acts as a safety buffer
+- A user deposits \$10,000 worth of ETH
+- The protocol allows them to borrow up to \$8,000 worth of USDC
+- The extra \$2,000 acts as a safety buffer
 
 If ETH's price drops, that buffer shrinks. If it drops enough, the collateral may no longer cover the debt. Overcollateralization gives the protocol a margin of safety, but it is not unlimited.
 
@@ -23,9 +23,7 @@ If ETH's price drops, that buffer shrinks. If it drops enough, the collateral ma
 
 The **Loan-to-Value ratio** (LTV) defines the maximum amount a user can borrow against their collateral:
 
-```
-Maximum Borrow = Collateral Value * LTV
-```
+$$\text{Maximum Borrow} = \text{Collateral Value} \times \text{LTV}$$
 
 Each asset has its own LTV set by governance:
 
@@ -39,14 +37,12 @@ A lower LTV means the protocol is more conservative about that asset --- it requ
 
 ### Example
 
-User deposits 5 ETH at $2,000/ETH = $10,000 collateral.
+User deposits 5 ETH at \$2,000/ETH = \$10,000 collateral.
 With an 80% LTV:
 
-```
-Maximum Borrow = $10,000 * 0.80 = $8,000
-```
+$$\text{Maximum Borrow} = \$10{,}000 \times 0.80 = \$8{,}000$$
 
-They can borrow up to $8,000 in any available asset.
+They can borrow up to \$8,000 in any available asset.
 
 ---
 
@@ -72,11 +68,7 @@ The gap between LTV and liquidation threshold gives borrowers a buffer zone. Whe
 
 The **health factor** combines everything into a single number that represents the safety of a position:
 
-```
-                    Sum(Collateral_i * Price_i * LiquidationThreshold_i)
-Health Factor = --------------------------------------------------------
-                              Sum(Debt_j * Price_j)
-```
+$$\text{Health Factor} = \frac{\sum(\text{Collateral}_i \times \text{Price}_i \times \text{LiquidationThreshold}_i)}{\sum(\text{Debt}_j \times \text{Price}_j)}$$
 
 In words: the risk-adjusted collateral value divided by the total debt value.
 
@@ -86,37 +78,37 @@ In words: the risk-adjusted collateral value divided by the total debt value.
 
 ### Example Walkthrough
 
-A user deposits 5 ETH ($2,000/ETH) and borrows 7,000 USDC:
+A user deposits 5 ETH (\$2,000/ETH) and borrows 7,000 USDC:
 
-```
-Collateral Value = 5 * $2,000 = $10,000
-Risk-adjusted Collateral = $10,000 * 0.825 = $8,250
-Debt Value = 7,000 USDC = $7,000
+$$\text{Collateral Value} = 5 \times \$2{,}000 = \$10{,}000$$
 
-Health Factor = $8,250 / $7,000 = 1.179
-```
+$$\text{Risk-adjusted Collateral} = \$10{,}000 \times 0.825 = \$8{,}250$$
 
-The position is safe. Now ETH drops to $1,700:
+$$\text{Debt Value} = 7{,}000 \text{ USDC} = \$7{,}000$$
 
-```
-Collateral Value = 5 * $1,700 = $8,500
-Risk-adjusted Collateral = $8,500 * 0.825 = $7,012.50
-Debt Value = $7,000 (unchanged --- they borrowed stablecoins)
+$$\text{Health Factor} = \frac{\$8{,}250}{\$7{,}000} = 1.179$$
 
-Health Factor = $7,012.50 / $7,000 = 1.0018
-```
+The position is safe. Now ETH drops to \$1,700:
+
+$$\text{Collateral Value} = 5 \times \$1{,}700 = \$8{,}500$$
+
+$$\text{Risk-adjusted Collateral} = \$8{,}500 \times 0.825 = \$7{,}012.50$$
+
+$$\text{Debt Value} = \$7{,}000 \quad (\text{unchanged --- they borrowed stablecoins})$$
+
+$$\text{Health Factor} = \frac{\$7{,}012.50}{\$7{,}000} = 1.0018$$
 
 The position is barely safe. One more small price drop and the health factor goes below 1.0, making the position liquidatable.
 
-ETH drops to $1,690:
+ETH drops to \$1,690:
 
-```
-Collateral Value = 5 * $1,690 = $8,450
-Risk-adjusted Collateral = $8,450 * 0.825 = $6,971.25
-Debt Value = $7,000
+$$\text{Collateral Value} = 5 \times \$1{,}690 = \$8{,}450$$
 
-Health Factor = $6,971.25 / $7,000 = 0.9959
-```
+$$\text{Risk-adjusted Collateral} = \$8{,}450 \times 0.825 = \$6{,}971.25$$
+
+$$\text{Debt Value} = \$7{,}000$$
+
+$$\text{Health Factor} = \frac{\$6{,}971.25}{\$7{,}000} = 0.9959$$
 
 Health factor is below 1.0. The position can now be liquidated.
 
@@ -131,10 +123,10 @@ Bad debt occurs when a borrower's debt exceeds their collateral value. At that p
 ```
 Scenario without liquidation:
 
-1. User deposits $10,000 ETH, borrows $8,000 USDC
-2. ETH crashes 50% -> collateral now worth $5,000
-3. User has no incentive to repay $8,000 debt (collateral < debt)
-4. Protocol absorbs $3,000 loss
+1. User deposits \$10,000 ETH, borrows \$8,000 USDC
+2. ETH crashes 50% -> collateral now worth \$5,000
+3. User has no incentive to repay \$8,000 debt (collateral < debt)
+4. Protocol absorbs \$3,000 loss
 5. Depositors cannot withdraw their full balances
 ```
 
@@ -166,9 +158,7 @@ Liquidators need a reason to act. Monitoring positions, paying gas, and taking o
 
 The liquidation bonus means the liquidator receives **more collateral** than the debt they repay:
 
-```
-Collateral Received = Debt Repaid * (1 + Liquidation Bonus)
-```
+$$\text{Collateral Received} = \text{Debt Repaid} \times (1 + \text{Liquidation Bonus})$$
 
 Typical liquidation bonuses:
 
@@ -180,17 +170,17 @@ Typical liquidation bonuses:
 
 ### Example
 
-A liquidator repays 3,500 USDC of the borrower's debt against ETH collateral. ETH price is $1,690, and the liquidation bonus is 5%.
+A liquidator repays 3,500 USDC of the borrower's debt against ETH collateral. ETH price is \$1,690, and the liquidation bonus is 5%.
 
-```
-Debt Repaid: 3,500 USDC = $3,500
-Collateral Received: $3,500 * 1.05 = $3,675 worth of ETH
-ETH Received: $3,675 / $1,690 = 2.175 ETH
+$$\text{Debt Repaid} = 3{,}500 \text{ USDC} = \$3{,}500$$
 
-Liquidator Profit: $3,675 - $3,500 = $175 (before gas costs)
-```
+$$\text{Collateral Received} = \$3{,}500 \times 1.05 = \$3{,}675 \text{ worth of ETH}$$
 
-The borrower loses $3,675 worth of collateral to clear $3,500 of debt. The extra $175 is the liquidator's reward and the borrower's penalty.
+$$\text{ETH Received} = \frac{\$3{,}675}{\$1{,}690} = 2.175 \text{ ETH}$$
+
+$$\text{Liquidator Profit} = \$3{,}675 - \$3{,}500 = \$175 \quad (\text{before gas costs})$$
+
+The borrower loses \$3,675 worth of collateral to clear \$3,500 of debt. The extra \$175 is the liquidator's reward and the borrower's penalty.
 
 ---
 
@@ -210,7 +200,7 @@ After a partial liquidation, the borrower's position looks like this:
 
 | | Before | After |
 |---|--------|-------|
-| Collateral | 5 ETH ($8,450) | 2.825 ETH ($4,773.25) |
+| Collateral | 5 ETH (\$8,450) | 2.825 ETH (\$4,773.25) |
 | Debt | 7,000 USDC | 3,500 USDC |
 | Health Factor | 0.9959 | 1.124 |
 

@@ -18,7 +18,7 @@ Every asset on Aave has three key risk parameters set by governance. Together, t
 
 LTV answers a simple question: for every dollar of this asset you supply, how much can you borrow?
 
-If ETH has an LTV of 80%, then $10,000 of ETH collateral lets you borrow up to $8,000. The remaining $2,000 is your margin of safety --- the protocol's buffer against price drops.
+If ETH has an LTV of 80%, then \$10,000 of ETH collateral lets you borrow up to \$8,000. The remaining \$2,000 is your margin of safety --- the protocol's buffer against price drops.
 
 Riskier assets get lower LTVs. Governance sets these based on liquidity, volatility, and market depth:
 
@@ -43,7 +43,7 @@ Why not make them the same number? Because prices are volatile. If you could bor
 
 Liquidation does not happen automatically. Someone has to monitor every position on the protocol, detect when one crosses the threshold, submit a transaction, and pay gas. That someone is a **liquidator**, and they need a reason to do this work.
 
-The liquidation bonus is that reason. It is the discount at which liquidators buy collateral. If the liquidation bonus is 5%, a liquidator who repays $10,000 of debt receives $10,500 worth of collateral. That $500 profit comes directly from the borrower's collateral --- the borrower loses more than their debt was worth.
+The liquidation bonus is that reason. It is the discount at which liquidators buy collateral. If the liquidation bonus is 5%, a liquidator who repays \$10,000 of debt receives \$10,500 worth of collateral. That \$500 profit comes directly from the borrower's collateral --- the borrower loses more than their debt was worth.
 
 Higher-risk assets have higher bonuses because they need to attract liquidators even when the market is chaotic:
 
@@ -77,45 +77,43 @@ The health factor moves for two reasons: your collateral changes in value (price
 
 ### Numerical Example: Watching the Health Factor Move
 
-Alice supplies **10 ETH** as collateral (ETH = $2,000, liquidation threshold = 82.5%).
-She borrows **$15,000 USDC**.
+Alice supplies **10 ETH** as collateral (ETH = \$2,000, liquidation threshold = 82.5%).
+She borrows **\$15,000 USDC**.
 
 **Day 1 --- Everything is fine:**
 
-```
-Collateral value:  10 x $2,000 = $20,000
-Adjusted collateral: $20,000 x 0.825 = $16,500
-Health Factor:     $16,500 / $15,000 = 1.10
-```
+$$\text{Collateral value} = 10 \times \$2{,}000 = \$20{,}000$$
+
+$$\text{Adjusted collateral} = \$20{,}000 \times 0.825 = \$16{,}500$$
+
+$$HF = \frac{\$16{,}500}{\$15{,}000} = 1.10$$
 
 Alice has a 10% safety margin. She sleeps well.
 
-**Day 2 --- ETH drops to $1,900:**
+**Day 2 --- ETH drops to \$1,900:**
 
-```
-Adjusted collateral: 10 x $1,900 x 0.825 = $15,675
-Health Factor:     $15,675 / $15,000 = 1.045
-```
+$$\text{Adjusted collateral} = 10 \times \$1{,}900 \times 0.825 = \$15{,}675$$
+
+$$HF = \frac{\$15{,}675}{\$15{,}000} = 1.045$$
 
 Getting uncomfortable, but still safe.
 
-**Day 3 --- ETH drops to $1,800:**
+**Day 3 --- ETH drops to \$1,800:**
 
-```
-Adjusted collateral: 10 x $1,800 x 0.825 = $14,850
-Health Factor:     $14,850 / $15,000 = 0.99
-```
+$$\text{Adjusted collateral} = 10 \times \$1{,}800 \times 0.825 = \$14{,}850$$
+
+$$HF = \frac{\$14{,}850}{\$15{,}000} = 0.99$$
 
 Health factor is below 1. Alice is now liquidatable.
 
-Notice: Alice originally borrowed at 75% LTV ($15,000 / $20,000), well within the 80% limit. The buffer between LTV (80%) and liquidation threshold (82.5%) gave her some protection, but a 10% price drop was enough to push her over the edge.
+Notice: Alice originally borrowed at 75% LTV (\$15,000 / \$20,000), well within the 80% limit. The buffer between LTV (80%) and liquidation threshold (82.5%) gave her some protection, but a 10% price drop was enough to push her over the edge.
 
 ### Weighted Averages for Multiple Collateral Types
 
 If you supply multiple assets as collateral, the protocol computes a weighted average liquidation threshold. For example:
 
-- $10,000 in ETH (threshold: 82.5%) and $5,000 in USDC (threshold: 89%)
-- Weighted threshold: ($10,000 x 82.5% + $5,000 x 89%) / $15,000 = **84.67%**
+- \$10,000 in ETH (threshold: 82.5%) and \$5,000 in USDC (threshold: 89%)
+- Weighted threshold: (\$10,000 x 82.5% + \$5,000 x 89%) / \$15,000 = **84.67%**
 
 This blended threshold determines your health factor. More stable collateral in the mix raises your effective threshold and improves your health factor.
 
@@ -139,9 +137,7 @@ The liquidator specifies:
 
 **3. Calculate collateral to seize.** The protocol converts the debt amount to collateral value using oracle prices, then adds the liquidation bonus:
 
-```
-Collateral seized = (Debt repaid / Collateral price) x (1 + Bonus%)
-```
+$$\text{Collateral seized} = \frac{\text{Debt repaid}}{\text{Collateral price}} \times (1 + \text{Bonus\%})$$
 
 If the borrower does not have enough collateral to cover the full bonus, the available collateral sets the limit and the debt repaid is reduced accordingly.
 
@@ -180,14 +176,13 @@ Consider: if HF = 0.80 and you only liquidate 50% of the debt, the health factor
 
 A complete liquidation involves three parties. Here is how the economics break down with a 5% liquidation bonus and 10% protocol fee on the bonus:
 
-```
-Liquidator repays:       $10,000 of debt (in USDC)
-Liquidator receives:     $10,450 of collateral (in ETH)
-   -> $10,000 base value + $450 profit (4.5% net bonus)
-Aave treasury receives:  $50 of collateral (0.5%, as aTokens)
-Borrower loses:          $10,500 of collateral total
-Borrower's debt reduced: $10,000
-```
+$$\text{Liquidator repays: } \$10{,}000 \text{ of debt (in USDC)}$$
+
+$$\text{Liquidator receives: } \$10{,}450 \text{ of collateral (in ETH)} = \$10{,}000 + \$450 \text{ profit (4.5\% net bonus)}$$
+
+$$\text{Aave treasury receives: } \$50 \text{ of collateral (0.5\%, as aTokens)}$$
+
+$$\text{Borrower loses: } \$10{,}500 \text{ of collateral total, debt reduced by } \$10{,}000$$
 
 The borrower is the one paying for the entire operation through lost collateral. The liquidator profits. The protocol takes a cut. Lenders are protected because the debt is repaid.
 
@@ -231,37 +226,37 @@ Bob supplies **5 ETH** as collateral and borrows **6,000 USDC**.
 
 | Parameter | Value |
 |-----------|-------|
-| ETH price | $2,000 |
+| ETH price | \$2,000 |
 | ETH LTV | 80% |
 | ETH liquidation threshold | 82.5% |
 | ETH liquidation bonus | 5% |
 | Protocol fee | 10% of bonus |
 
 Bob's initial position:
-- Collateral: 5 x $2,000 = **$10,000**
-- Max borrow: $10,000 x 80% = $8,000 (he only used $6,000)
-- Health factor: ($10,000 x 0.825) / $6,000 = **1.375**
+- Collateral: 5 x \$2,000 = **\$10,000**
+- Max borrow: \$10,000 x 80% = \$8,000 (he only used \$6,000)
+- Health factor: (\$10,000 x 0.825) / \$6,000 = **1.375**
 
 Bob is well within safe territory.
 
 ### The Price Drop
 
-ETH falls to **$1,450**. Bob's debt has accrued slightly to **$6,050**.
+ETH falls to **\$1,450**. Bob's debt has accrued slightly to **\$6,050**.
 
-- Collateral: 5 x $1,450 = **$7,250**
-- Health factor: ($7,250 x 0.825) / $6,050 = **$5,981 / $6,050 = 0.989**
+- Collateral: 5 x \$1,450 = **\$7,250**
+- Health factor: (\$7,250 x 0.825) / \$6,050 = **\$5,981 / \$6,050 = 0.989**
 
 Bob is liquidatable. Since 0.989 > 0.95, the close factor is 50%.
 
 ### The Liquidation
 
-Carol, a liquidator bot, repays **$3,025 of USDC** (50% of Bob's debt).
+Carol, a liquidator bot, repays **\$3,025 of USDC** (50% of Bob's debt).
 
 **Collateral calculation:**
 
 | Step | Calculation | Result |
 |------|-------------|--------|
-| Base collateral (debt value in ETH) | $3,025 / $1,450 | 2.086 ETH |
+| Base collateral (debt value in ETH) | \$3,025 / \$1,450 | 2.086 ETH |
 | Add 5% bonus | 2.086 x 1.05 | 2.191 ETH |
 | Protocol fee (10% of bonus) | 0.105 x 0.10 | 0.010 ETH |
 | Carol receives | 2.191 - 0.010 | **2.181 ETH** |
@@ -270,10 +265,10 @@ Carol, a liquidator bot, repays **$3,025 of USDC** (50% of Bob's debt).
 
 | Party | Before | After | Change |
 |-------|--------|-------|--------|
-| **Bob (borrower)** | 5 ETH collateral, $6,050 debt | 2.809 ETH ($4,073), $3,025 debt | Lost 2.191 ETH, debt halved |
-| **Bob's health factor** | 0.989 | ($4,073 x 0.825) / $3,025 = **1.111** | Restored to health |
-| **Carol (liquidator)** | Paid $3,025 USDC | Received 2.181 ETH ($3,162) | **+$137 profit** |
-| **Aave treasury** | --- | 0.010 ETH ($15) as aTokens | Small fee collected |
+| **Bob (borrower)** | 5 ETH collateral, \$6,050 debt | 2.809 ETH (\$4,073), \$3,025 debt | Lost 2.191 ETH, debt halved |
+| **Bob's health factor** | 0.989 | (\$4,073 x 0.825) / \$3,025 = **1.111** | Restored to health |
+| **Carol (liquidator)** | Paid \$3,025 USDC | Received 2.181 ETH (\$3,162) | **+\$137 profit** |
+| **Aave treasury** | --- | 0.010 ETH (\$15) as aTokens | Small fee collected |
 
 The system worked: Bob's risky position was brought back to solvency. Carol earned a profit for performing a useful service. The protocol collected a fee. No bad debt was created. Lenders are whole.
 

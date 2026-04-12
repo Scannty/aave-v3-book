@@ -26,7 +26,7 @@ Why would you disable collateral? If you are only supplying for yield and do not
 
 ### 3. Borrowing
 
-You select an asset to borrow (say ETH) and the protocol checks whether your collateral is sufficient. Each asset has a **Loan-to-Value (LTV)** ratio --- for example, ETH collateral with 80% LTV means $10,000 of ETH lets you borrow up to $8,000.
+You select an asset to borrow (say ETH) and the protocol checks whether your collateral is sufficient. Each asset has a **Loan-to-Value (LTV)** ratio --- for example, ETH collateral with 80% LTV means \$10,000 of ETH lets you borrow up to \$8,000.
 
 If the math checks out, the protocol transfers the borrowed asset to your wallet and issues **debt tokens** to your address. These debt tokens represent what you owe, and their balance grows as interest accrues --- just like aTokens grow for suppliers, debt tokens grow for borrowers.
 

@@ -1,6 +1,6 @@
 # Chapter 8: Flash Loans
 
-Imagine walking into a bank and saying: "Lend me $100 million. No collateral. No credit check. I will return it in 12 seconds." In traditional finance, you would be escorted out. In DeFi, this happens thousands of times a day. It is called a **flash loan**, and Aave pioneered it.
+Imagine walking into a bank and saying: "Lend me \$100 million. No collateral. No credit check. I will return it in 12 seconds." In traditional finance, you would be escorted out. In DeFi, this happens thousands of times a day. It is called a **flash loan**, and Aave pioneered it.
 
 The concept is simple: borrow any amount of any asset, with zero collateral, as long as you repay the full amount plus a small fee within the same transaction. If you fail to repay, the entire transaction reverts --- as if it never happened. The protocol's funds were never at risk.
 
@@ -12,7 +12,7 @@ This is not a loophole or a hack. It is a fundamental consequence of how blockch
 
 Flash loans exploit a property unique to blockchains: **transaction atomicity**. An Ethereum transaction is all-or-nothing. Every state change within a transaction either completes successfully, or the entire transaction reverts to the starting state. There is no middle ground.
 
-This creates a remarkable guarantee: the protocol can lend you $100 million because it knows that if you do not return it, the loan never happened. From the blockchain's perspective, the funds never left the pool. The ledger at the end of the block looks exactly as it did before.
+This creates a remarkable guarantee: the protocol can lend you \$100 million because it knows that if you do not return it, the loan never happened. From the blockchain's perspective, the funds never left the pool. The ledger at the end of the block looks exactly as it did before.
 
 Compare this to traditional lending, where risk exists because time passes between disbursement and repayment. The borrower could disappear, go bankrupt, or refuse to pay. Flash loans eliminate the time dimension entirely. The loan is issued and repaid within a single atomic operation that takes about 12 seconds (one block).
 
@@ -31,10 +31,10 @@ Flash loans are not free. The borrower pays a **premium** of **0.05%** (5 basis 
 
 | Loan Amount | Premium (0.05%) | You Repay |
 |-------------|-----------------|-----------|
-| $1,000 | $0.50 | $1,000.50 |
-| $100,000 | $50 | $100,050 |
-| $1,000,000 | $500 | $1,000,500 |
-| $50,000,000 | $25,000 | $50,025,000 |
+| \$1,000 | \$0.50 | \$1,000.50 |
+| \$100,000 | \$50 | \$100,050 |
+| \$1,000,000 | \$500 | \$1,000,500 |
+| \$50,000,000 | \$25,000 | \$50,025,000 |
 
 The premium is split between two recipients:
 
@@ -42,15 +42,15 @@ The premium is split between two recipients:
 
 2. **The Aave treasury** receives a governance-configured portion via `accruedToTreasury`.
 
-The exact split is configurable. If the total premium is 5 bps and the protocol's share is 4 bps, then on a $1M loan: suppliers earn $100 and the treasury earns $400.
+The exact split is configurable. If the total premium is 5 bps and the protocol's share is 4 bps, then on a \$1M loan: suppliers earn \$100 and the treasury earns \$400.
 
-The amount you can borrow is limited only by the available liquidity in a reserve. If there is $500M of USDC deposited and not currently lent out, you can flash loan up to $500M.
+The amount you can borrow is limited only by the available liquidity in a reserve. If there is \$500M of USDC deposited and not currently lent out, you can flash loan up to \$500M.
 
 ---
 
 ## 3. Use Cases: What You Can Do with Unlimited Capital
 
-Flash loans are powerful because they give anyone --- even someone with $0 --- temporary access to millions of dollars. The catch is that you must generate enough value within a single transaction to repay the loan plus the fee. Here are the most common strategies.
+Flash loans are powerful because they give anyone --- even someone with \$0 --- temporary access to millions of dollars. The catch is that you must generate enough value within a single transaction to repay the loan plus the fee. Here are the most common strategies.
 
 ### Arbitrage
 
@@ -68,9 +68,9 @@ Before flash loans, this kind of arbitrage required substantial capital. Flash l
 
 ### Collateral Swap
 
-You have $100,000 of ETH as collateral on Aave, backing a $50,000 USDC loan. You want to switch your collateral to WBTC --- perhaps because you are bearish on ETH. Without flash loans, you would need to:
+You have \$100,000 of ETH as collateral on Aave, backing a \$50,000 USDC loan. You want to switch your collateral to WBTC --- perhaps because you are bearish on ETH. Without flash loans, you would need to:
 
-1. Find $50,000 to repay the loan (you might not have it)
+1. Find \$50,000 to repay the loan (you might not have it)
 2. Repay the USDC debt
 3. Withdraw ETH
 4. Swap ETH for WBTC
@@ -79,13 +79,13 @@ You have $100,000 of ETH as collateral on Aave, backing a $50,000 USDC loan. You
 
 With flash loans, this becomes a single atomic transaction:
 
-1. Flash loan $50,000 USDC
+1. Flash loan \$50,000 USDC
 2. Repay your Aave debt
 3. Withdraw your ETH collateral
 4. Swap ETH for WBTC on a DEX
 5. Supply WBTC as new collateral on Aave
-6. Borrow $50,000 USDC against the new collateral
-7. Repay the flash loan ($50,025 USDC)
+6. Borrow \$50,000 USDC against the new collateral
+7. Repay the flash loan (\$50,025 USDC)
 
 One transaction. No capital needed. No moment where your position is exposed.
 
@@ -100,13 +100,13 @@ Your health factor is approaching 1.0 and you want to unwind your position grace
 5. Repay the flash loan
 6. Keep the remaining collateral
 
-**The savings are dramatic.** On a $100,000 debt position with ETH collateral and a 5% liquidation bonus, a normal liquidation costs you ~$5,000. Self-liquidation via flash loan costs ~$50. That is a 99% reduction.
+**The savings are dramatic.** On a \$100,000 debt position with ETH collateral and a 5% liquidation bonus, a normal liquidation costs you ~\$5,000. Self-liquidation via flash loan costs ~\$50. That is a 99% reduction.
 
 ### Leveraged Positions (Looping)
 
 Build a leveraged long ETH position in a single transaction:
 
-1. Start with 10 ETH (~$20,000)
+1. Start with 10 ETH (~\$20,000)
 2. Flash loan 90 ETH
 3. Supply all 100 ETH to Aave
 4. Borrow 80 ETH worth of USDC (80% LTV)
