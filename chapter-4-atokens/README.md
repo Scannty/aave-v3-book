@@ -12,14 +12,6 @@ When you supply 1,000 USDC to Aave, you receive 1,000 aUSDC. This aUSDC is a sta
 
 You do not need to claim anything. You do not need to stake, lock, or interact with the protocol. Your balance simply goes up, block by block, second by second.
 
-Every reserve in Aave V3 has a corresponding aToken:
-
-| You Deposit | You Receive | You Can Redeem For |
-|------------|-------------|-------------------|
-| 1,000 USDC | 1,000 aUSDC | 1,000+ USDC (with interest) |
-| 5 WETH     | 5 aWETH     | 5+ WETH (with interest)     |
-| 10,000 DAI | 10,000 aDAI | 10,000+ DAI (with interest) |
-
 The key design choice: **1 aToken is always worth approximately 1 of the underlying asset.** If you hold 1,050 aUSDC, you can redeem it for 1,050 USDC. The quantity of tokens in your wallet changes to reflect interest --- not the price per token.
 
 This is what makes aTokens intuitive. You do not need to check an exchange rate or do mental math. Your wallet balance *is* your position value.
@@ -214,28 +206,6 @@ Because aTokens are standard ERC-20s, they can be:
 - **Traded on DEXs** --- though rebasing complicates AMM accounting
 
 The rebasing behavior does create friction with some DeFi protocols. AMMs that cache token balances (like simple x*y=k designs) will miscount aToken reserves over time. Any integration must call `balanceOf()` fresh rather than relying on cached values.
-
----
-
-## Integration Notes: What Developers Need to Know
-
-If you are building on top of Aave or integrating aTokens into another protocol, these are the key gotchas:
-
-### Do Not Cache balanceOf()
-
-The most common mistake. An aToken's `balanceOf()` changes between blocks --- and even within a single block if the reserve state is updated. Always read it fresh.
-
-### Use scaledBalanceOf() for Snapshots
-
-If you need a value that only changes on explicit actions (deposit, withdraw, transfer), use `scaledBalanceOf()`. This returns the raw stored value without index multiplication.
-
-### Transfer Events Do Not Reflect Interest
-
-ERC-20 `Transfer` events are only emitted on actual mint, burn, or transfer operations. Interest accrual is silent. You cannot reconstruct a user's full balance history from Transfer events alone.
-
-### The aToken Is the Vault
-
-The aToken contract holds all underlying assets for that reserve. It is not just a receipt --- it is where the money lives. Only the Pool contract (via the `onlyPool` modifier) can authorize withdrawals from it.
 
 ---
 
