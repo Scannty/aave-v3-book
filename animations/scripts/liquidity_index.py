@@ -8,44 +8,34 @@ class LiquidityIndexGrowth(Scene):
     def construct(self):
         title = Text("Liquidity Index Over Time", font_size=36, color=WHITE).to_edge(UP, buff=0.4)
 
-        # Axes
+        # Axes - leave more room at bottom and left
         axes = Axes(
-            x_range=[0, 365, 30],
-            y_range=[1.0, 1.12, 0.02],
-            x_length=10,
-            y_length=5.5,
+            x_range=[0, 365, 60],
+            y_range=[1.0, 1.08, 0.02],
+            x_length=9,
+            y_length=5,
             axis_config={"color": WHITE, "include_numbers": False},
             tips=False,
-        ).shift(DOWN * 0.5)
+        ).shift(DOWN * 0.3 + RIGHT * 0.3)
 
-        x_label = Text("Days", font_size=22, color=GREY_B).next_to(axes.c2p(365, 1.0), DOWN, buff=0.3)
-        y_label = Text("Index Value", font_size=22, color=GREY_B).next_to(axes.c2p(0, 1.12), LEFT, buff=0.3)
+        x_label = Text("Days", font_size=20, color=GREY_B).next_to(axes.c2p(365, 1.0), RIGHT, buff=0.2)
 
-        # Day labels
+        # Day labels - fewer to avoid crowding
         day_labels = VGroup()
         for d in [0, 60, 120, 180, 240, 300, 365]:
-            l = Text(str(d), font_size=18, color=GREY_B)
+            l = Text(str(d), font_size=16, color=GREY_B)
             l.next_to(axes.c2p(d, 1.0), DOWN, buff=0.15)
             day_labels.add(l)
 
-        # Index labels
+        # Index labels - shifted left to not overlap axis
         idx_labels = VGroup()
-        for v in [1.00, 1.02, 1.04, 1.06, 1.08, 1.10, 1.12]:
-            l = Text(f"{v:.2f}", font_size=18, color=GREY_B)
-            l.next_to(axes.c2p(0, v), LEFT, buff=0.15)
+        for v in [1.00, 1.02, 1.04, 1.06, 1.08]:
+            l = Text(f"{v:.2f}", font_size=16, color=GREY_B)
+            l.next_to(axes.c2p(0, v), LEFT, buff=0.2)
             idx_labels.add(l)
 
         # Simulate index growth with variable utilization
-        # Higher utilization periods = faster growth
         def index_value(day):
-            # Base ~5% APR but with some variation
-            if day < 120:
-                daily_rate = 0.05 / 365  # 5% APR
-            elif day < 240:
-                daily_rate = 0.08 / 365  # 8% APR (more borrowing)
-            else:
-                daily_rate = 0.03 / 365  # 3% APR (borrowing decreases)
-
             result = 1.0
             for d in range(int(day)):
                 if d < 120:
@@ -68,48 +58,30 @@ class LiquidityIndexGrowth(Scene):
             add_vertex_dots=False,
         )
 
-        # Period annotations
-        low_period = Text("Normal\nutilization", font_size=18, color=GREEN).move_to(axes.c2p(60, 1.09))
-        high_period = Text("High\nutilization", font_size=18, color=RED).move_to(axes.c2p(180, 1.09))
-        cool_period = Text("Low\nutilization", font_size=18, color=GREEN).move_to(axes.c2p(300, 1.09))
+        # Period annotations - single line, positioned clearly above curve
+        low_period = Text("Normal util.", font_size=16, color=GREEN).move_to(axes.c2p(60, 1.065))
+        high_period = Text("High util.", font_size=16, color=RED).move_to(axes.c2p(180, 1.065))
+        cool_period = Text("Low util.", font_size=16, color=GREEN).move_to(axes.c2p(300, 1.065))
 
-        # Background shading for periods
+        # Background shading for high utilization period
         high_rect = Rectangle(
             width=axes.c2p(240, 0)[0] - axes.c2p(120, 0)[0],
-            height=axes.c2p(0, 1.12)[1] - axes.c2p(0, 1.0)[1],
+            height=axes.c2p(0, 1.08)[1] - axes.c2p(0, 1.0)[1],
             fill_color=RED,
             fill_opacity=0.08,
             stroke_width=0,
-        ).move_to(axes.c2p(180, 1.06))
+        ).move_to(axes.c2p(180, 1.04))
 
-        self.play(Write(title), run_time=1)
-        self.play(Create(axes), Write(x_label), Write(y_label), run_time=1.5)
+        self.play(FadeIn(title), run_time=1)
+        self.play(Create(axes), FadeIn(x_label), run_time=1.5)
         self.play(FadeIn(day_labels), FadeIn(idx_labels), run_time=0.8)
 
         # Draw the curve progressively
         self.play(Create(index_curve), run_time=5, rate_func=linear)
 
         self.play(FadeIn(high_rect), run_time=0.5)
-        self.play(Write(low_period), Write(high_period), Write(cool_period), run_time=1)
+        self.play(FadeIn(low_period), FadeIn(high_period), FadeIn(cool_period), run_time=1)
 
-        # Show what this means for a depositor
-        explanation = VGroup(
-            Text("Alice deposits 1,000 USDC on Day 0", font_size=22, color=WHITE),
-            Text("Scaled balance stored: 1,000 / 1.00 = 1,000", font_size=22, color=GREY_B),
-        ).arrange(DOWN, aligned_edge=LEFT, buff=0.15).to_edge(DOWN, buff=0.3)
-
-        self.play(Write(explanation), run_time=1)
-        self.wait(1.5)
-
-        # Show balance at day 365
-        final_val = values[-1]
-        explanation2 = VGroup(
-            Text(f"On Day 365, index = {final_val:.4f}", font_size=22, color=BLUE),
-            Text(f"Alice's balance = 1,000 x {final_val:.4f} = {1000*final_val:.2f} USDC", font_size=22, color=GREEN),
-        ).arrange(DOWN, aligned_edge=LEFT, buff=0.15).to_edge(DOWN, buff=0.3)
-
-        self.play(FadeOut(explanation), run_time=0.5)
-        self.play(Write(explanation2), run_time=1)
         self.wait(2)
 
 
