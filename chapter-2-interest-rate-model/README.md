@@ -4,9 +4,9 @@
 
 A lending protocol is fundamentally a marketplace. On one side, suppliers want to earn yield on idle capital. On the other side, borrowers want access to capital and are willing to pay for it. The interest rate is the price that balances these two sides.
 
-If rates are too low, borrowers flood in and drain the pool. Suppliers cannot withdraw because there is no liquidity left --- a crisis scenario. If rates are too high, no one borrows, suppliers earn nothing, and capital sits idle. The protocol needs a mechanism that automatically adjusts rates to keep supply and demand in equilibrium.
+If rates are too low, borrowers flood in and drain the pool. Suppliers cannot withdraw because there is no liquidity left - a crisis scenario. If rates are too high, no one borrows, suppliers earn nothing, and capital sits idle. The protocol needs a mechanism that automatically adjusts rates to keep supply and demand in equilibrium.
 
-Aave V3 solves this with a **utilization-based interest rate model**. The interest rate is not set by governance or by an oracle --- it is a pure function of how much of the available liquidity is currently being borrowed. More borrowing means higher rates. Less borrowing means lower rates. The system is self-correcting.
+Aave V3 solves this with a **utilization-based interest rate model**. The interest rate is not set by governance or by an oracle - it is a pure function of how much of the available liquidity is currently being borrowed. More borrowing means higher rates. Less borrowing means lower rates. The system is self-correcting.
 
 <video src="animations/final/interest_rate_curve.webm" controls autoplay loop muted playsinline style="width:100%;max-width:800px;border-radius:8px;margin:20px 0"></video>
 
@@ -20,21 +20,21 @@ Total supply is all the capital in the system: the liquidity sitting idle in the
 
 - **U = 0%** means no one is borrowing. All capital is idle.
 - **U = 50%** means half the pool has been lent out.
-- **U = 100%** means every last token has been borrowed. Suppliers cannot withdraw --- there is nothing left in the pool.
+- **U = 100%** means every last token has been borrowed. Suppliers cannot withdraw - there is nothing left in the pool.
 
 Utilization near 100% is dangerous. It creates a liquidity crisis where suppliers are trapped. The interest rate model's primary job is to prevent this from happening.
 
 ## Why Not a Simple Linear Rate?
 
-The simplest approach would be a straight line: rate goes up proportionally with utilization. But this fails in practice. At 90% utilization, the rate might be 18%, while at 80% it is 16% --- not much difference. There is no urgency signal when the pool is dangerously low on liquidity. Depositors trying to withdraw at 95% utilization face the same moderate incentive as at 70%. A linear model cannot distinguish between "comfortable" and "emergency."
+The simplest approach would be a straight line: rate goes up proportionally with utilization. But this fails in practice. At 90% utilization, the rate might be 18%, while at 80% it is 16% - not much difference. There is no urgency signal when the pool is dangerously low on liquidity. Depositors trying to withdraw at 95% utilization face the same moderate incentive as at 70%. A linear model cannot distinguish between "comfortable" and "emergency."
 
 ## The Kink Model: Incentive Design Through a Rate Curve
 
-Aave solves this with a **piecewise linear model with a kink** --- a point where the slope of the rate curve changes dramatically.
+Aave solves this with a **piecewise linear model with a kink** - a point where the slope of the rate curve changes dramatically.
 
 <video src="animations/final/utilization_shift.webm" controls autoplay loop muted playsinline style="width:100%;max-width:800px;border-radius:8px;margin:20px 0"></video>
 
-The kink point is called the **optimal utilization ratio** (typically 80--90% for stablecoins, 45--65% for volatile assets). Think of it as the protocol's target: "We want utilization to hover around this level."
+The kink point is called the **optimal utilization ratio** (typically 80-90% for stablecoins, 45-65% for volatile assets). Think of it as the protocol's target: "We want utilization to hover around this level."
 
 ### Below the kink: gentle encouragement
 
@@ -48,7 +48,7 @@ The rate climbs linearly from the base rate toward `baseRate + slope1` as utiliz
 
 ### Above the kink: aggressive discouragement
 
-When utilization crosses the target, the protocol gets aggressive. Rates start climbing steeply --- often 10x to 100x faster than below the kink. This serves two purposes simultaneously:
+When utilization crosses the target, the protocol gets aggressive. Rates start climbing steeply - often 10x to 100x faster than below the kink. This serves two purposes simultaneously:
 
 1. **Discourage new borrowing.** The cost of borrowing becomes painful, so fewer people take new loans.
 2. **Incentivize new supply.** The high rates make supplying very attractive, drawing in new capital.
@@ -57,7 +57,7 @@ The formula is:
 
 $$R_{borrow} = R_{base} + slope_1 + \frac{U - U_{optimal}}{1 - U_{optimal}} \times slope_2$$
 
-Above the kink, you pay the full `slope1` *plus* a rapidly increasing portion of `slope2`. Since `slope2` is typically 15--75x larger than `slope1`, the rate curve bends sharply upward.
+Above the kink, you pay the full `slope1` *plus* a rapidly increasing portion of `slope2`. Since `slope2` is typically 15-75x larger than `slope1`, the rate curve bends sharply upward.
 
 ### Why a kink and not a smooth curve?
 
@@ -70,9 +70,9 @@ Each asset's interest rate curve is controlled by four parameters set by governa
 | Parameter | What It Controls | Typical Values |
 |-----------|-----------------|----------------|
 | `baseVariableBorrowRate` | The floor rate when no one is borrowing | 0% for most assets |
-| `optimalUsageRatio` | The kink point (target utilization) | 80--90% for stablecoins, 45--65% for volatile assets |
-| `variableRateSlope1` | How quickly rates rise below the kink | 3--7% for stablecoins, 3--8% for volatile assets |
-| `variableRateSlope2` | How quickly rates rise above the kink | 60--300% for stablecoins, 80--300% for volatile assets |
+| `optimalUsageRatio` | The kink point (target utilization) | 80-90% for stablecoins, 45-65% for volatile assets |
+| `variableRateSlope1` | How quickly rates rise below the kink | 3-7% for stablecoins, 3-8% for volatile assets |
+| `variableRateSlope2` | How quickly rates rise above the kink | 60-300% for stablecoins, 80-300% for volatile assets |
 
 These parameters encode a governance judgment about each asset: how liquid does the market need to be? How aggressively should the protocol defend against liquidity crises? A stablecoin like USDC might tolerate high utilization (90% optimal) with a moderate penalty slope, while a volatile asset like LINK might have a lower optimal (45%) with a steeper penalty.
 
@@ -84,7 +84,7 @@ Suppliers earn interest that comes directly from borrowers. But the supply rate 
 
 1. **Not all capital is borrowed.** If utilization is 80%, then 20% of the supplied capital is sitting idle, earning nothing. The interest from borrowers is spread across *all* suppliers, including those whose capital is not being used.
 
-2. **The protocol takes a cut.** The **reserve factor** (typically 10--20%) is governance's fee. This portion of the interest goes to the Aave treasury rather than to suppliers.
+2. **The protocol takes a cut.** The **reserve factor** (typically 10-20%) is governance's fee. This portion of the interest goes to the Aave treasury rather than to suppliers.
 
 The supply rate formula captures both effects:
 
@@ -141,7 +141,7 @@ $$R_{borrow} = 3.5\% + \frac{95\% - 90\%}{100\% - 90\%} \times 60\% = 3.5\% + 30
 
 $$R_{supply} = 33.5\% \times 0.95 \times 0.90 = 28.64\%$$
 
-Going from 90% to 95% utilization --- just 5 percentage points --- caused the borrow rate to **jump from 3.5% to 33.5%**. That is nearly a 10x increase. Meanwhile, suppliers are now earning 28.64%, which will attract new capital and push utilization back down.
+Going from 90% to 95% utilization - just 5 percentage points - caused the borrow rate to **jump from 3.5% to 33.5%**. That is nearly a 10x increase. Meanwhile, suppliers are now earning 28.64%, which will attract new capital and push utilization back down.
 
 This is the kink model doing its job.
 
@@ -151,7 +151,7 @@ $$R_{borrow} = 3.5\% + \frac{100\% - 90\%}{100\% - 90\%} \times 60\% = 3.5\% + 6
 
 $$R_{supply} = 63.5\% \times 1.00 \times 0.90 = 57.15\%$$
 
-At full utilization, borrowers are paying 63.5% APY. This rate is designed to be untenable --- no rational borrower will maintain a position at this cost for long. At the same time, 57.15% supply APY is a powerful magnet for new capital.
+At full utilization, borrowers are paying 63.5% APY. This rate is designed to be untenable - no rational borrower will maintain a position at this cost for long. At the same time, 57.15% supply APY is a powerful magnet for new capital.
 
 ### The Full Picture
 
@@ -162,7 +162,7 @@ At full utilization, borrowers are paying 63.5% APY. This rate is designed to be
 | 60% | 2.33% | 1.26% | Gentle slope |
 | 80% | 3.11% | 2.24% | Approaching kink |
 | 90% | 3.50% | 2.84% | At the kink |
-| 92% | 15.50% | 12.84% | Above kink --- rates jumping |
+| 92% | 15.50% | 12.84% | Above kink - rates jumping |
 | 95% | 33.50% | 28.64% | Well above kink |
 | 100% | 63.50% | 57.15% | Maximum pain |
 
@@ -174,13 +174,13 @@ Solidity has no floating-point numbers, so Aave uses fixed-point integers with 2
 
 Why 27 decimals? Interest rates can be fractions of a percent, and they compound over small time intervals (seconds). High precision prevents rounding errors from accumulating over months and years.
 
-The `WadRayMath` library provides `rayMul` and `rayDiv` operations --- essentially multiplication and division that account for the 27-decimal scaling factor. You will see these throughout the codebase, but the concept is straightforward: it is just fixed-point arithmetic with very high precision.
+The `WadRayMath` library provides `rayMul` and `rayDiv` operations - essentially multiplication and division that account for the 27-decimal scaling factor. You will see these throughout the codebase, but the concept is straightforward: it is just fixed-point arithmetic with very high precision.
 
 For reference, Aave also uses **wad** (18 decimals, matching most ERC-20 tokens) for token amounts. Ray is reserved for rates and indexes where extra precision matters.
 
 ## Stable Rate Borrowing (Deprecated)
 
-Early versions of Aave offered **stable rate borrowing**, where a borrower could lock in a fixed rate at the time of borrowing. The appeal was predictability --- you knew what you would pay regardless of market conditions.
+Early versions of Aave offered **stable rate borrowing**, where a borrower could lock in a fixed rate at the time of borrowing. The appeal was predictability - you knew what you would pay regardless of market conditions.
 
 In practice, this feature proved problematic. Borrowers could lock in artificially low rates during favorable conditions, creating an asymmetry that disadvantaged suppliers. A "rebalancing" mechanism existed to reset egregiously stale rates, but it added complexity and potential for manipulation.
 
@@ -192,13 +192,25 @@ For the remainder of this book, we focus exclusively on variable rate borrowing.
 
 Rates are not continuously streamed like a price feed. They are **recalculated on every state-changing operation**:
 
-- **`supply()`** --- Liquidity increases, utilization drops, rates decrease
-- **`withdraw()`** --- Liquidity decreases, utilization rises, rates increase
-- **`borrow()`** --- Debt increases, utilization rises, rates increase
-- **`repay()`** --- Debt decreases, utilization drops, rates decrease
-- **`liquidationCall()`** --- Debt is repaid and collateral is seized, rates change
+- **`supply()`** - Liquidity increases, utilization drops, rates decrease
+- **`withdraw()`** - Liquidity decreases, utilization rises, rates increase
+- **`borrow()`** - Debt increases, utilization rises, rates increase
+- **`repay()`** - Debt decreases, utilization drops, rates decrease
+- **`liquidationCall()`** - Debt is repaid and collateral is seized, rates change
 
-After executing the core operation, the Pool calls `reserve.updateInterestRatesAndVirtualBalance()`, which invokes the interest rate strategy's `calculateInterestRates()` function and stores the new rates in `ReserveData`.
+After executing the core operation, the Pool calls `reserve.updateInterestRatesAndVirtualBalance()`, which delegates to the interest rate strategy:
+
+```solidity
+// Inside ReserveLogic
+(vars.nextLiquidityRate, vars.nextVariableRate) = IReserveInterestRateStrategy(
+    reserve.interestRateStrategyAddress
+).calculateInterestRates(calculateInterestRatesParams);
+
+reserve.currentLiquidityRate = vars.nextLiquidityRate.toUint128();
+reserve.currentVariableBorrowRate = vars.nextVariableRate.toUint128();
+```
+
+The Pool computes the new utilization based on current liquidity and debt, passes it to the strategy, and stores the returned rates in `ReserveData`.
 
 Between transactions, the stored rates are static. But the **indexes** (covered in Chapter 3) use these stored rates plus elapsed time to compute how much interest has accrued since the last update. So while rates only change on transactions, interest accrual is effectively continuous.
 
@@ -208,14 +220,14 @@ This design means that in periods of high activity, rates update frequently and 
 
 The kink model creates a self-correcting system:
 
-1. **Utilization rises above target** --- Borrow rates spike, making borrowing expensive. Supply rates also spike, attracting new capital.
-2. **Borrowers repay or get liquidated** --- Debt decreases, utilization falls.
-3. **New suppliers enter** --- Available liquidity increases, utilization falls further.
-4. **Utilization returns to target** --- Rates normalize.
+1. **Utilization rises above target** - Borrow rates spike, making borrowing expensive. Supply rates also spike, attracting new capital.
+2. **Borrowers repay or get liquidated** - Debt decreases, utilization falls.
+3. **New suppliers enter** - Available liquidity increases, utilization falls further.
+4. **Utilization returns to target** - Rates normalize.
 
 The same loop works in reverse: if utilization drops too low, low supply rates cause some suppliers to withdraw and seek yield elsewhere, while low borrow rates attract new borrowers. Utilization drifts back up.
 
-This is not a theoretical construct --- it plays out in real time across Aave's markets. During periods of market stress (when many users want to borrow stablecoins to cover positions), utilization spikes, rates skyrocket, and the protocol incentivizes the exact behavior needed to restore equilibrium.
+This is not a theoretical construct - it plays out in real time across Aave's markets. During periods of market stress (when many users want to borrow stablecoins to cover positions), utilization spikes, rates skyrocket, and the protocol incentivizes the exact behavior needed to restore equilibrium.
 
 ## Summary
 
@@ -223,6 +235,6 @@ Aave V3's interest rate model is a utilization-based kink model with four parame
 
 The supply rate is derived from the borrow rate, reduced by two factors: the share of capital that sits idle (1 - utilization) and the protocol's revenue cut (reserve factor). This creates a clean economic flow from borrowers to suppliers, with the protocol extracting a sustainable fee.
 
-The kink model is simple by design --- four numbers define the entire curve --- but it creates a powerful self-correcting feedback loop that keeps each market in equilibrium without any manual intervention.
+The kink model is simple by design - four numbers define the entire curve - but it creates a powerful self-correcting feedback loop that keeps each market in equilibrium without any manual intervention.
 
-In the next chapter, we examine how these instantaneous rates translate into actual interest accrual through **indexes** and **scaled balances** --- the mechanism that lets thousands of users earn interest without a single storage write per user.
+In the next chapter, we examine how these instantaneous rates translate into actual interest accrual through **indexes** and **scaled balances** - the mechanism that lets thousands of users earn interest without a single storage write per user.

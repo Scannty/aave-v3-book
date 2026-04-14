@@ -1,16 +1,16 @@
 # Chapter 3: Interest Rate Indexes and Scaled Balances
 
-This chapter covers one of the most elegant design patterns in all of DeFi: how Aave V3 tracks interest accrual for thousands of users without ever touching their individual balances. Once you understand this mechanism, everything else in the protocol --- aTokens, debt tokens, supply flows, liquidations --- falls into place.
+This chapter covers one of the most elegant design patterns in all of DeFi: how Aave V3 tracks interest accrual for thousands of users without ever touching their individual balances. Once you understand this mechanism, everything else in the protocol - aTokens, debt tokens, supply flows, liquidations - falls into place.
 
 <video src="animations/final/liquidity_index.webm" controls autoplay loop muted playsinline style="width:100%;max-width:800px;border-radius:8px;margin:20px 0"></video>
 
----
+-
 
 ## The Problem: You Cannot Update 10,000 Balances
 
 Imagine building a lending protocol the naive way. There are 10,000 users who have supplied ETH. Interest accrues every second. To keep everyone's balances correct, you would need to loop through all 10,000 accounts and update each one's stored balance every time interest should be credited.
 
-On a blockchain, this is impossible. A single loop iteration costs gas. Ten thousand iterations would cost more gas than fits in a block. And interest accrues continuously --- you cannot skip updates without losing accuracy.
+On a blockchain, this is impossible. A single loop iteration costs gas. Ten thousand iterations would cost more gas than fits in a block. And interest accrues continuously - you cannot skip updates without losing accuracy.
 
 Even batching would not help. What if 500 new users deposit between batches? What if someone tries to withdraw mid-batch? The accounting becomes a nightmare.
 
@@ -23,7 +23,7 @@ So Aave needs a system where:
 
 The solution is **indexes** and **scaled balances**.
 
----
+-
 
 ## The Index: A Cumulative Multiplier
 
@@ -31,9 +31,9 @@ The **liquidity index** is a single number, stored once per asset, that encodes 
 
 Think of it as an exchange rate between "original dollars" and "current dollars." If the liquidity index is 1.08, then one dollar deposited at the very beginning of the protocol is now worth \$1.08. The index captures every second of interest that has ever accrued, compressed into one number.
 
-Think of it like a stock that never pays dividends but always goes up. If you buy at \$105 per share and later it is at \$110, you earned the difference --- regardless of what happened before you bought. The index works the same way: your return is entirely determined by the ratio between the index when you exit and the index when you entered.
+Think of it like a stock that never pays dividends but always goes up. If you buy at \$105 per share and later it is at \$110, you earned the difference - regardless of what happened before you bought. The index works the same way: your return is entirely determined by the ratio between the index when you exit and the index when you entered.
 
-One important property: **an index can never decrease.** Interest always accumulates over time, even when rates fluctuate. If the supply rate drops from 5% to 1%, the index still grows --- just more slowly. It is a monotonically increasing number.
+One important property: **an index can never decrease.** Interest always accumulates over time, even when rates fluctuate. If the supply rate drops from 5% to 1%, the index still grows - just more slowly. It is a monotonically increasing number.
 
 Every reserve has its own liquidity index. USDC has one, ETH has one, WBTC has one. They grow at different rates because each market has different utilization and interest rates.
 
@@ -65,7 +65,7 @@ The key difference: the borrow index uses **compound interest**:
 
 $$VBI_{new} = VBI_{old} \times \left(1 + \frac{R_{borrow}}{seconds_{year}}\right)^{\Delta t}$$
 
-This is true compounding --- interest accrues on previously accrued interest. On-chain, Aave computes this with a third-order Taylor expansion rather than actual exponentiation (which would be too gas-expensive):
+This is true compounding - interest accrues on previously accrued interest. On-chain, Aave computes this with a third-order Taylor expansion rather than actual exponentiation (which would be too gas-expensive):
 
 $$(1 + x)^n \approx 1 + nx + \frac{n(n-1)}{2}x^2 + \frac{n(n-1)(n-2)}{6}x^3$$
 
@@ -73,7 +73,7 @@ where $x = \frac{R_{borrow}}{seconds_{year}}$ and $n = \Delta t$.
 
 ### Why Linear for Supply, Compound for Borrow?
 
-**Conservative debt accounting.** Borrow rates are higher. Over long intervals between updates on quiet reserves, the difference between simple and compound interest becomes meaningful. Compounding ensures the protocol never underestimates what borrowers owe --- underestimating debt would create bad debt.
+**Conservative debt accounting.** Borrow rates are higher. Over long intervals between updates on quiet reserves, the difference between simple and compound interest becomes meaningful. Compounding ensures the protocol never underestimates what borrowers owe - underestimating debt would create bad debt.
 
 **The surplus is a feature.** The small gap between compound interest on debt and simple interest on deposits means the protocol collects slightly more from borrowers than it distributes to suppliers. This tiny surplus acts as an additional safety buffer. On active reserves where updates happen every few seconds, the difference is negligible.
 
@@ -85,11 +85,11 @@ Indexes are not updated on a schedule. They update whenever *any* user interacts
 
 Between interactions, the stored indexes are technically stale. But as we will see, `balanceOf()` computes the live value on the fly so balances are always accurate.
 
----
+-
 
 ## Scaled Balances: The Accounting Trick
 
-Here is the key insight. Aave never stores your "actual" balance. Instead, it stores a **scaled balance** --- your deposit amount divided by the liquidity index at the moment you deposited.
+Here is the key insight. Aave never stores your "actual" balance. Instead, it stores a **scaled balance** - your deposit amount divided by the liquidity index at the moment you deposited.
 
 $$scaledBalance = \frac{depositAmount}{liquidityIndex_{deposit}}$$
 
@@ -109,7 +109,7 @@ You earned \$47.62, which is exactly the interest that accrued between index 1.0
 
 The same principle applies to debt. When you borrow, your debt is divided by the variable borrow index. To find your current debt, multiply by the current borrow index.
 
----
+-
 
 ## How the Index Evolves With Changing Rates
 
@@ -127,11 +127,11 @@ A user who deposited 10 ETH at inception now has:
 
 $$actualBalance = 10 \times 1.0218 = 10.218 \text{ ETH}$$
 
-They earned 0.218 ETH across three months with three different interest rates. The index absorbed all of that complexity into a single number. No one had to store the rate history or calculate compound interest across multiple periods --- the index did it automatically, one update at a time.
+They earned 0.218 ETH across three months with three different interest rates. The index absorbed all of that complexity into a single number. No one had to store the rate history or calculate compound interest across multiple periods - the index did it automatically, one update at a time.
 
 This is the fundamental insight: **the index is a running product of all historical rate intervals.** Each update multiplies the old index by `(1 + rate × timeElapsed)`, and the result encodes the entire interest history.
 
----
+-
 
 ## Alice and Bob: A Complete Walkthrough
 
@@ -170,7 +170,7 @@ $$scaledBalance_{Bob} = \frac{2000}{1.050000} = 1{,}904.76$$
 | Alice | 1,000.00 | 1.050000 | 1,050.00 |
 | Bob | 1,904.76 | 1.050000 | 2,000.00 |
 
-Notice that Bob's scaled balance (1,904.76) is less than his deposit (2,000). This is correct --- Bob is "entering" at a higher index, so his scaled balance reflects what his deposit is worth in "original dollars." When multiplied by the current index, it gives back exactly 2,000.
+Notice that Bob's scaled balance (1,904.76) is less than his deposit (2,000). This is correct - Bob is "entering" at a higher index, so his scaled balance reflects what his deposit is worth in "original dollars." When multiplied by the current index, it gives back exactly 2,000.
 
 ### T=2: More Time Passes, Index Reaches 1.100000
 
@@ -210,7 +210,7 @@ Alice's remaining 600 USDC has grown to 627.27 (earning the same rate as everyon
 
 The system handles deposits, withdrawals, and different entry times seamlessly, all through one global index.
 
----
+-
 
 ## Why This Design Is Elegant
 
@@ -228,7 +228,7 @@ This gives you:
 
 **Correctness under concurrent deposits.** Multiple users depositing at different times and amounts are all handled correctly. Each user's scaled balance captures their entry point, and the ratio between indexes handles everything else.
 
----
+-
 
 ## How "Interest Accrues" Without Any Transaction
 
@@ -236,18 +236,36 @@ A common source of confusion: if indexes are only updated when someone interacts
 
 The answer is that interest accrues *mathematically* but not *in storage*. Between transactions, the stored index is stale. But any code that reads a balance (including `balanceOf()`) first computes what the index *would be* right now based on the stored rate and elapsed time, then multiplies by the scaled balance.
 
-Here is the conceptual sequence when you call `aToken.balanceOf(user)`:
+Here is how `balanceOf()` works under the hood:
 
-1. Read the stored `liquidityIndex` and `lastUpdateTimestamp` from `ReserveData`.
-2. Read the stored `currentLiquidityRate`.
-3. Compute the "live" index: `liveIndex = storedIndex * (1 + rate * (now - lastUpdate) / secondsPerYear)`.
-4. Return `scaledBalance * liveIndex`.
+```solidity
+function balanceOf(address user) public view override returns (uint256) {
+    return super.balanceOf(user).rayMul(
+        POOL.getReserveNormalizedIncome(_underlyingAsset)
+    );
+}
+```
+
+`super.balanceOf(user)` returns the stored scaled balance. `getReserveNormalizedIncome()` computes the live liquidity index by projecting forward from the last stored value:
+
+```solidity
+function getReserveNormalizedIncome(address asset) external view returns (uint256) {
+    if (reserve.lastUpdateTimestamp == block.timestamp) {
+        return reserve.liquidityIndex;  // Already up to date
+    }
+    return reserve.liquidityIndex.rayMul(
+        MathUtils.calculateLinearInterest(reserve.currentLiquidityRate, reserve.lastUpdateTimestamp)
+    );
+}
+```
+
+So `balanceOf()` always returns a fresh value even if no one has interacted with the reserve in hours.
 
 This means the returned balance is always up-to-date, even if no one has touched the reserve in hours. The stored index catches up the next time someone does interact.
 
-This is also why aToken balances appear to change continuously in wallet UIs that poll `balanceOf()` --- each call returns a slightly larger number as time passes.
+This is also why aToken balances appear to change continuously in wallet UIs that poll `balanceOf()` - each call returns a slightly larger number as time passes.
 
----
+-
 
 ## The Same Pattern for Debt
 
@@ -263,7 +281,7 @@ Your debt grows over time as the borrow index increases, just as supply balances
 
 When you repay, the protocol burns the corresponding scaled debt amount. Partial repayments work exactly like partial withdrawals in the supply example above.
 
----
+-
 
 ## Putting It All Together: The Supply Flow
 
@@ -277,11 +295,11 @@ Here is the complete sequence when someone calls `Pool.supply(USDC, 1000)`:
 
 Every operation follows the same pattern: **update state first, then act.** This ensures that all interest accrual is accounted for before any balances change, preventing users from gaming the timing of their transactions.
 
----
+-
 
 ## Summary
 
-The index-and-scaled-balance pattern is the accounting foundation of Aave V3. Every other mechanism --- aTokens, debt tokens, treasury accruals, liquidation calculations --- builds on it.
+The index-and-scaled-balance pattern is the accounting foundation of Aave V3. Every other mechanism - aTokens, debt tokens, treasury accruals, liquidation calculations - builds on it.
 
 **Key takeaways:**
 

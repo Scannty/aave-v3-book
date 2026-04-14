@@ -1,12 +1,12 @@
 # Chapter 10: Isolation Mode
 
-DeFi moves fast. Every week, new tokens launch --- governance tokens, liquid staking derivatives, real-world asset tokens, memecoins-turned-infrastructure. Users want to use these tokens as collateral on Aave. More listed assets mean more users, more liquidity, and more revenue.
+DeFi moves fast. Every week, new tokens launch - governance tokens, liquid staking derivatives, real-world asset tokens, memecoins-turned-infrastructure. Users want to use these tokens as collateral on Aave. More listed assets mean more users, more liquidity, and more revenue.
 
-But new tokens are risky. A freshly launched governance token might have \$5M of liquidity on DEXes today and \$500K tomorrow. Its price could crash 80% in an hour. If Aave allows unlimited borrowing against such a token, and the token collapses, the protocol could end up with millions in bad debt --- losses that fall on every lender in the pool.
+But new tokens are risky. A freshly launched governance token might have \$5M of liquidity on DEXes today and \$500K tomorrow. Its price could crash 80% in an hour. If Aave allows unlimited borrowing against such a token, and the token collapses, the protocol could end up with millions in bad debt - losses that fall on every lender in the pool.
 
 The traditional answer was simple: do not list risky assets. But that limits growth. Aave V3 introduces a better answer: **Isolation Mode**. List the asset, but with strict guardrails that cap the protocol's maximum exposure.
 
----
+-
 
 ## 1. The Risk Problem
 
@@ -26,7 +26,7 @@ Lending against NEW_TOKEN is a different story. If its price drops 50% in minute
 
 **Isolation Mode bounds this risk.** It says: "Yes, list the asset. Let people borrow against it. But cap the total damage."
 
----
+-
 
 ## 2. The Three Guardrails
 
@@ -42,7 +42,7 @@ This is a **global** limit, not per-user. Why? Because the protocol's risk is ag
 
 | Debt Ceiling | What It Means |
 |--------------|---------------|
-| \$1M | Extremely cautious listing --- testing the waters |
+| \$1M | Extremely cautious listing - testing the waters |
 | \$5M | Moderate confidence, growing track record |
 | \$50M | High confidence, but still wants a cap |
 | \$0 | Not isolated (normal asset, no ceiling) |
@@ -53,12 +53,12 @@ The ceiling is denominated in the protocol's base currency (USD on mainnet) with
 
 A user in Isolation Mode can only borrow assets that governance has explicitly flagged as "borrowable in isolation." In practice, this means **stablecoins**: USDC, DAI, USDT.
 
-Why stablecoins? Because they keep the debt side of the equation predictable. If a user borrows WETH against isolated collateral and ETH doubles, the debt value doubles too --- making the health factor calculation more complex and the debt ceiling less meaningful in dollar terms. Stablecoins maintain a consistent dollar value, which means the debt ceiling directly translates to a maximum dollar exposure.
+Why stablecoins? Because they keep the debt side of the equation predictable. If a user borrows WETH against isolated collateral and ETH doubles, the debt value doubles too - making the health factor calculation more complex and the debt ceiling less meaningful in dollar terms. Stablecoins maintain a consistent dollar value, which means the debt ceiling directly translates to a maximum dollar exposure.
 
 | Borrowable in Isolation? | Asset | Rationale |
 |--------------------------|-------|-----------|
 | Yes | USDC, DAI, USDT | Stable value, predictable debt |
-| No | WETH, WBTC | Volatile --- would make debt ceiling unreliable |
+| No | WETH, WBTC | Volatile - would make debt ceiling unreliable |
 | Sometimes | FRAX, other stables | Governance decides case by case |
 
 ### Guardrail 3: No Additional Collateral
@@ -69,7 +69,7 @@ This prevents a scenario where a user mixes isolated and non-isolated collateral
 
 By requiring sole collateral, the relationship is clear: this user's entire position depends on the isolated asset, and their borrow counts fully against the debt ceiling.
 
----
+-
 
 ## 3. How Isolation Mode Is Triggered
 
@@ -88,7 +88,7 @@ Two-way enforcement prevents mixing:
 
 To exit, disable the isolated collateral (requires no outstanding debt that depends on it) or swap your collateral base by supplying and enabling a non-isolated asset first.
 
----
+-
 
 ## 4. A Complete Example
 
@@ -161,7 +161,7 @@ Alice repays her \$400,000 USDC debt. The `isolationModeTotalDebt` decreases by 
 
 She disables NEW_TOKEN as collateral. She is no longer in Isolation Mode and can now enable other assets as collateral and borrow any asset.
 
----
+-
 
 ## 5. Isolation Mode + E-Mode
 
@@ -179,7 +179,7 @@ A user supplies nUSD, enters Stablecoin E-Mode, and borrows USDC. They get:
 
 This combination lets Aave list a new stablecoin with high capital efficiency (via E-Mode) while still capping risk exposure (via the debt ceiling). It is the best of both worlds.
 
----
+-
 
 ## 6. The Debt Ceiling Mechanics
 
@@ -191,7 +191,7 @@ The debt ceiling counter is tracked per isolated asset in the reserve data as `i
 
 This means the debt ceiling is a living limit. As users repay or get liquidated, capacity opens up for new borrowers. It is not a one-time allocation.
 
----
+-
 
 ## 7. Liquidation in Isolation Mode
 
@@ -213,7 +213,7 @@ When a position is liquidated, the debt counter decreases. If Alice's \$400,000 
 | Alice is liquidated | \$4,600,000 | \$400,000 |
 | Others repay \$1M | \$3,600,000 | \$1,400,000 |
 
----
+-
 
 ## 8. The Governance Progression
 
@@ -223,7 +223,7 @@ Isolation Mode is often a stepping stone. A new asset starts isolated, proves it
 
 **Stage 2: Ceiling increases.** As the asset demonstrates stability and liquidity grows, governance raises the debt ceiling. A token that started at \$5M might move to \$20M, then \$50M.
 
-**Stage 3: Full listing.** If the asset proves itself over months or years --- deep liquidity, reliable oracle, predictable volatility --- governance can remove the debt ceiling entirely (set it to 0). The asset becomes a normal collateral type with no isolation restrictions.
+**Stage 3: Full listing.** If the asset proves itself over months or years - deep liquidity, reliable oracle, predictable volatility - governance can remove the debt ceiling entirely (set it to 0). The asset becomes a normal collateral type with no isolation restrictions.
 
 **Stage 4: E-Mode eligibility.** Mature assets that are correlated with existing categories may be added to E-Mode groups, unlocking the highest capital efficiency.
 
@@ -243,7 +243,7 @@ How does governance choose a debt ceiling? Several factors:
 
 The ceiling should be set so that even in a total collapse of the isolated asset, the resulting bad debt is absorbable by the Aave safety module and treasury. This is ultimately a judgment call by governance, informed by risk analysis.
 
----
+-
 
 ## Key Takeaways
 

@@ -1,14 +1,14 @@
 # Chapter 7: Collateral, Liquidations, and the Health Factor
 
-Lending protocols exist because they promise lenders one thing: you will get your money back, plus interest. But Aave lends to anonymous borrowers with no credit checks, no legal recourse, and no collection agencies. The only thing protecting lenders is **overcollateralization** --- borrowers must lock up more value than they borrow.
+Lending protocols exist because they promise lenders one thing: you will get your money back, plus interest. But Aave lends to anonymous borrowers with no credit checks, no legal recourse, and no collection agencies. The only thing protecting lenders is **overcollateralization** - borrowers must lock up more value than they borrow.
 
-The problem is that collateral values change. ETH can drop 20% in a day. If a borrower's collateral falls below their debt, the protocol has a hole in its balance sheet --- lenders cannot be made whole. This is called **bad debt**, and it is the existential threat to any lending protocol.
+The problem is that collateral values change. ETH can drop 20% in a day. If a borrower's collateral falls below their debt, the protocol has a hole in its balance sheet - lenders cannot be made whole. This is called **bad debt**, and it is the existential threat to any lending protocol.
 
 Liquidation is the mechanism that prevents bad debt. When a borrower's position becomes risky, the protocol allows anyone to step in, repay part of the debt, and claim the borrower's collateral at a discount. The borrower loses some collateral. The liquidator earns a profit. And the protocol stays solvent.
 
 This chapter explains the economics of how that system works: the risk parameters that define borrowing limits, the health factor that measures safety, and the liquidation process that enforces it all.
 
----
+-
 
 ## 1. Risk Parameters: The Economic Levers
 
@@ -18,15 +18,15 @@ Every asset on Aave has three key risk parameters set by governance. Together, t
 
 LTV answers a simple question: for every dollar of this asset you supply, how much can you borrow?
 
-If ETH has an LTV of 80%, then \$10,000 of ETH collateral lets you borrow up to \$8,000. The remaining \$2,000 is your margin of safety --- the protocol's buffer against price drops.
+If ETH has an LTV of 80%, then \$10,000 of ETH collateral lets you borrow up to \$8,000. The remaining \$2,000 is your margin of safety - the protocol's buffer against price drops.
 
 Riskier assets get lower LTVs. Governance sets these based on liquidity, volatility, and market depth:
 
 | Asset | LTV  | What It Means |
 |-------|------|---------------|
-| WETH  | 80%  | Well-understood, deep liquidity --- generous borrowing power |
+| WETH  | 80%  | Well-understood, deep liquidity - generous borrowing power |
 | WBTC  | 70%  | Cross-chain bridge risk warrants more caution |
-| USDC  | 86.5%| Very stable, tight peg --- high borrowing power |
+| USDC  | 86.5%| Very stable, tight peg - high borrowing power |
 | DAI   | 75%  | Algorithmic elements add slight risk |
 
 LTV is only checked when **opening or increasing** a position. Once you have borrowed, your position is not liquidated until it crosses a different line.
@@ -35,7 +35,7 @@ LTV is only checked when **opening or increasing** a position. Once you have bor
 
 The liquidation threshold is the point at which your position becomes liquidatable. It is always higher than the LTV, creating a buffer zone.
 
-With ETH's LTV at 80% and liquidation threshold at 82.5%, you can borrow up to 80% of your collateral's value, but you are not liquidated until your debt reaches 82.5% of collateral value. That 2.5% gap is your breathing room --- time to add collateral or repay debt as prices move against you.
+With ETH's LTV at 80% and liquidation threshold at 82.5%, you can borrow up to 80% of your collateral's value, but you are not liquidated until your debt reaches 82.5% of collateral value. That 2.5% gap is your breathing room - time to add collateral or repay debt as prices move against you.
 
 Why not make them the same number? Because prices are volatile. If you could borrow right up to the liquidation line, any small price fluctuation would trigger immediate liquidation. The gap gives borrowers a realistic chance to manage their positions.
 
@@ -43,7 +43,7 @@ Why not make them the same number? Because prices are volatile. If you could bor
 
 Liquidation does not happen automatically. Someone has to monitor every position on the protocol, detect when one crosses the threshold, submit a transaction, and pay gas. That someone is a **liquidator**, and they need a reason to do this work.
 
-The liquidation bonus is that reason. It is the discount at which liquidators buy collateral. If the liquidation bonus is 5%, a liquidator who repays \$10,000 of debt receives \$10,500 worth of collateral. That \$500 profit comes directly from the borrower's collateral --- the borrower loses more than their debt was worth.
+The liquidation bonus is that reason. It is the discount at which liquidators buy collateral. If the liquidation bonus is 5%, a liquidator who repays \$10,000 of debt receives \$10,500 worth of collateral. That \$500 profit comes directly from the borrower's collateral - the borrower loses more than their debt was worth.
 
 Higher-risk assets have higher bonuses because they need to attract liquidators even when the market is chaotic:
 
@@ -60,7 +60,7 @@ Higher-risk assets have higher bonuses because they need to attract liquidators 
 
 A portion of the liquidation bonus is redirected to the Aave treasury. If the bonus is 5% and the protocol fee is 10% of the bonus, the liquidator keeps 4.5% and the treasury takes 0.5%. This turns every liquidation into a small revenue event for the protocol.
 
----
+-
 
 ## 2. The Health Factor: One Number to Rule Them All
 
@@ -80,7 +80,7 @@ The health factor moves for two reasons: your collateral changes in value (price
 Alice supplies **10 ETH** as collateral (ETH = \$2,000, liquidation threshold = 82.5%).
 She borrows **\$15,000 USDC**.
 
-**Day 1 --- Everything is fine:**
+**Day 1 - Everything is fine:**
 
 $$\text{Collateral value} = 10 \times \$2{,}000 = \$20{,}000$$
 
@@ -90,7 +90,7 @@ $$HF = \frac{\$16{,}500}{\$15{,}000} = 1.10$$
 
 Alice has a 10% safety margin. She sleeps well.
 
-**Day 2 --- ETH drops to \$1,900:**
+**Day 2 - ETH drops to \$1,900:**
 
 $$\text{Adjusted collateral} = 10 \times \$1{,}900 \times 0.825 = \$15{,}675$$
 
@@ -98,7 +98,7 @@ $$HF = \frac{\$15{,}675}{\$15{,}000} = 1.045$$
 
 Getting uncomfortable, but still safe.
 
-**Day 3 --- ETH drops to \$1,800:**
+**Day 3 - ETH drops to \$1,800:**
 
 $$\text{Adjusted collateral} = 10 \times \$1{,}800 \times 0.825 = \$14{,}850$$
 
@@ -117,11 +117,11 @@ If you supply multiple assets as collateral, the protocol computes a weighted av
 
 This blended threshold determines your health factor. More stable collateral in the mix raises your effective threshold and improves your health factor.
 
----
+-
 
 ## 3. The Liquidation Process: An Economic Transaction
 
-When a health factor drops below 1, a liquidation is not a penalty imposed by the protocol. It is an open economic opportunity. Anyone --- a bot, a DAO, an individual --- can execute it by calling `liquidationCall()` on the Pool contract. No whitelist, no permissions.
+When a health factor drops below 1, a liquidation is not a penalty imposed by the protocol. It is an open economic opportunity. Anyone - a bot, a DAO, an individual - can execute it by calling `liquidationCall()` on the Pool contract. No whitelist, no permissions.
 
 The liquidator specifies:
 - Which collateral to seize from the borrower
@@ -131,13 +131,20 @@ The liquidator specifies:
 
 ### What Happens Step by Step
 
-**1. Check eligibility.** The protocol recalculates the borrower's health factor using current oracle prices. If HF >= 1, the liquidation reverts --- the position is healthy.
+**1. Check eligibility.** The protocol recalculates the borrower's health factor using current oracle prices. If HF >= 1, the liquidation reverts - the position is healthy.
 
-**2. Determine how much can be liquidated** (the close factor --- see next section).
+**2. Determine how much can be liquidated** (the close factor - see next section).
 
 **3. Calculate collateral to seize.** The protocol converts the debt amount to collateral value using oracle prices, then adds the liquidation bonus:
 
 $$\text{Collateral seized} = \frac{\text{Debt repaid}}{\text{Collateral price}} \times (1 + \text{Bonus\%})$$
+
+```solidity
+vars.baseCollateral = (vars.debtAssetPrice * vars.actualDebtToLiquidate * vars.collateralAssetUnit)
+    / (vars.collateralPrice * vars.debtAssetUnit);
+
+vars.maxCollateralToLiquidate = vars.baseCollateral.percentMul(vars.liquidationBonus);
+```
 
 If the borrower does not have enough collateral to cover the full bonus, the available collateral sets the limit and the debt repaid is reduced accordingly.
 
@@ -147,7 +154,7 @@ If the borrower does not have enough collateral to cover the full bonus, the ava
 
 After liquidation, the borrower has less collateral but also less debt. Their health factor typically improves, often rising back above 1.
 
----
+-
 
 ## 4. The Close Factor: Partial vs. Full Liquidation
 
@@ -164,11 +171,11 @@ Partial liquidation is more borrower-friendly. After a liquidator repays half th
 
 ### Why 100% Below 0.95?
 
-When a position is deeply underwater, a 50% liquidation might not restore the health factor above 1. The remaining position could become insolvent --- creating bad debt that harms lenders. Allowing full liquidation ensures the protocol can close out dangerous positions entirely.
+When a position is deeply underwater, a 50% liquidation might not restore the health factor above 1. The remaining position could become insolvent - creating bad debt that harms lenders. Allowing full liquidation ensures the protocol can close out dangerous positions entirely.
 
 Consider: if HF = 0.80 and you only liquidate 50% of the debt, the health factor after liquidation might still be below 1, requiring another liquidation. With 100%, a single liquidator can clean up the entire position.
 
----
+-
 
 ## 5. The Liquidation Economy
 
@@ -188,19 +195,19 @@ The borrower is the one paying for the entire operation through lost collateral.
 
 ### The Competitive Landscape
 
-Liquidation on Aave is a competitive market. Hundreds of bots monitor every position in real time, racing to liquidate the moment a health factor crosses 1. This competition is healthy for the protocol --- it means positions are liquidated quickly, minimizing the chance of bad debt.
+Liquidation on Aave is a competitive market. Hundreds of bots monitor every position in real time, racing to liquidate the moment a health factor crosses 1. This competition is healthy for the protocol - it means positions are liquidated quickly, minimizing the chance of bad debt.
 
 The competition takes several forms:
 
 **Priority Gas Auctions (PGA).** Bots bid up gas prices to get their liquidation transaction included first. The winner captures the liquidation bonus; the losers waste gas.
 
-**Flash loan liquidations.** Liquidators do not need capital. They flash loan the debt asset, execute the liquidation, sell the seized collateral, repay the flash loan, and pocket the difference --- all in a single transaction. This dramatically lowers the barrier to entry.
+**Flash loan liquidations.** Liquidators do not need capital. They flash loan the debt asset, execute the liquidation, sell the seized collateral, repay the flash loan, and pocket the difference - all in a single transaction. This dramatically lowers the barrier to entry.
 
 **MEV and block builders.** Sophisticated liquidators work with block builders to guarantee their transaction lands in the right position within a block. Some use private mempools to avoid being front-run.
 
 The result: healthy positions are almost never at risk of bad debt because the moment they become liquidatable, someone is there to clean them up. The liquidation bonus ensures this market stays active even during high-volatility periods.
 
----
+-
 
 ## 6. Oracle Dependency
 
@@ -208,13 +215,13 @@ The entire liquidation system depends on accurate price data. If prices are wron
 
 Aave V3 uses **Chainlink price feeds** as its primary oracle source, wrapped in an `AaveOracle` contract that provides:
 
-- **Base currency optimization**: If the asset is the base currency itself (e.g., USD on mainnet), return the unit price directly --- no oracle call needed.
+- **Base currency optimization**: If the asset is the base currency itself (e.g., USD on mainnet), return the unit price directly - no oracle call needed.
 - **Fallback mechanism**: If Chainlink returns zero or a negative price, fall back to a secondary oracle. This provides resilience against feed failures.
 - **Consistent precision**: Prices are returned with 8 decimal places, and all health factor calculations account for the decimal differences between assets.
 
-The price flow during liquidation is straightforward: the liquidator's transaction triggers a health factor recalculation, which queries the oracle for every asset the borrower holds. If the resulting health factor is below 1, the liquidation proceeds. The entire check is synchronous and on-chain --- no off-chain components.
+The price flow during liquidation is straightforward: the liquidator's transaction triggers a health factor recalculation, which queries the oracle for every asset the borrower holds. If the resulting health factor is below 1, the liquidation proceeds. The entire check is synchronous and on-chain - no off-chain components.
 
----
+-
 
 ## 7. Complete Liquidation Example
 
@@ -268,11 +275,11 @@ Carol, a liquidator bot, repays **\$3,025 of USDC** (50% of Bob's debt).
 | **Bob (borrower)** | 5 ETH collateral, \$6,050 debt | 2.809 ETH (\$4,073), \$3,025 debt | Lost 2.191 ETH, debt halved |
 | **Bob's health factor** | 0.989 | (\$4,073 x 0.825) / \$3,025 = **1.111** | Restored to health |
 | **Carol (liquidator)** | Paid \$3,025 USDC | Received 2.181 ETH (\$3,162) | **+\$137 profit** |
-| **Aave treasury** | --- | 0.010 ETH (\$15) as aTokens | Small fee collected |
+| **Aave treasury** | - | 0.010 ETH (\$15) as aTokens | Small fee collected |
 
 The system worked: Bob's risky position was brought back to solvency. Carol earned a profit for performing a useful service. The protocol collected a fee. No bad debt was created. Lenders are whole.
 
----
+-
 
 ## Key Takeaways
 
@@ -284,8 +291,8 @@ The system worked: Bob's risky position was brought back to solvency. Carol earn
 
 4. **The close factor balances borrower protection with protocol safety.** At 50%, borrowers usually survive a liquidation. Below HF 0.95, the protocol prioritizes its own solvency with 100%.
 
-5. **Liquidation is a competitive market.** Flash loans, MEV, and gas auctions create a fast and efficient liquidation ecosystem. This is good for the protocol --- positions rarely linger in dangerous territory.
+5. **Liquidation is a competitive market.** Flash loans, MEV, and gas auctions create a fast and efficient liquidation ecosystem. This is good for the protocol - positions rarely linger in dangerous territory.
 
 6. **Accurate oracles are the foundation.** Every health factor calculation depends on Chainlink price feeds. Wrong prices mean wrong liquidations (or missed ones).
 
-7. **The buffer between LTV and liquidation threshold is your margin of safety** --- but it is finite. Borrowers should monitor their health factor and maintain a comfortable margin above 1.
+7. **The buffer between LTV and liquidation threshold is your margin of safety** - but it is finite. Borrowers should monitor their health factor and maintain a comfortable margin above 1.

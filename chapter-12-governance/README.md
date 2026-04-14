@@ -1,10 +1,10 @@
 # Chapter 12: Governance and Admin Controls
 
-Aave V3 is a decentralized protocol, but "decentralized" does not mean "unmanaged." Someone needs to list new assets, adjust risk parameters during market shifts, pause the protocol when an exploit is discovered, and upgrade contracts when bugs are found. The question is not whether these powers exist --- they must --- but how they are distributed, constrained, and made accountable.
+Aave V3 is a decentralized protocol, but "decentralized" does not mean "unmanaged." Someone needs to list new assets, adjust risk parameters during market shifts, pause the protocol when an exploit is discovered, and upgrade contracts when bugs are found. The question is not whether these powers exist - they must - but how they are distributed, constrained, and made accountable.
 
 Aave's answer is a layered trust hierarchy: ordinary users at the bottom with no special privileges, specialized roles in the middle with narrow powers, and full governance at the top with broad authority but slow execution. Every layer is designed around a single principle: **the most dangerous operations require the most rigorous process**.
 
----
+-
 
 ## 1. The Central Registry: PoolAddressesProvider
 
@@ -14,7 +14,7 @@ Every Aave V3 deployment starts with one contract: the `PoolAddressesProvider`. 
 
 | Registry Key | Contract | Purpose |
 |---|---|---|
-| `POOL` | Pool (proxy) | The main lending pool --- supply, borrow, repay, withdraw, liquidate |
+| `POOL` | Pool (proxy) | The main lending pool - supply, borrow, repay, withdraw, liquidate |
 | `POOL_CONFIGURATOR` | PoolConfigurator (proxy) | Admin functions for configuring reserves |
 | `PRICE_ORACLE` | AaveOracle | Price feed aggregator for all assets |
 | `ACL_MANAGER` | ACLManager | Role-based access control |
@@ -25,13 +25,13 @@ Every Aave V3 deployment starts with one contract: the `PoolAddressesProvider`. 
 
 The registry provides two capabilities that are essential for a long-lived protocol:
 
-**Upgradeability.** The Pool and PoolConfigurator are deployed behind proxies. When governance wants to upgrade the Pool's logic, the PoolAddressesProvider points the proxy to a new implementation. Every contract and integration that references the Pool through the registry continues working at the same address --- they never need to be updated.
+**Upgradeability.** The Pool and PoolConfigurator are deployed behind proxies. When governance wants to upgrade the Pool's logic, the PoolAddressesProvider points the proxy to a new implementation. Every contract and integration that references the Pool through the registry continues working at the same address - they never need to be updated.
 
-**Discoverability.** External integrations --- frontends, bots, other protocols --- only need to know the PoolAddressesProvider address. From there, they can look up every other contract in the system. This is critical for composability: a new protocol integrating with Aave needs one address, not twenty.
+**Discoverability.** External integrations - frontends, bots, other protocols - only need to know the PoolAddressesProvider address. From there, they can look up every other contract in the system. This is critical for composability: a new protocol integrating with Aave needs one address, not twenty.
 
 The PoolAddressesProvider is owned by the governance executor. Only governance can change what addresses the registry points to. There is also a `PoolAddressesProviderRegistry` that tracks all PoolAddressesProvider instances across different Aave markets on a chain, providing a single entry point for discovering all markets.
 
----
+-
 
 ## 2. The Trust Hierarchy: Who Can Do What
 
@@ -47,7 +47,7 @@ Any Ethereum address can supply, borrow, repay, withdraw, liquidate, and take fl
 
 ### Layer 1: Flash Borrower
 
-Addresses granted the `FLASH_BORROWER` role pay zero premium on flash loans. This is not an admin role --- it grants no power over the protocol. It is an economic privilege: whitelisted integrations (typically liquidation bots and protocol partners) get free flash loans because their activity benefits the ecosystem.
+Addresses granted the `FLASH_BORROWER` role pay zero premium on flash loans. This is not an admin role - it grants no power over the protocol. It is an economic privilege: whitelisted integrations (typically liquidation bots and protocol partners) get free flash loans because their activity benefits the ecosystem.
 
 ### Layer 2: Risk Admin
 
@@ -59,11 +59,11 @@ In practice, this role is often held by professional risk service providers like
 
 ### Layer 3: Emergency Admin (The Guardian)
 
-The `EMERGENCY_ADMIN` role can pause and unpause individual reserves or the entire protocol. Pausing stops all operations --- supply, borrow, repay, withdraw, liquidation, flash loans. This is the nuclear option, designed for active exploits where any transaction might drain funds.
+The `EMERGENCY_ADMIN` role can pause and unpause individual reserves or the entire protocol. Pausing stops all operations - supply, borrow, repay, withdraw, liquidation, flash loans. This is the nuclear option, designed for active exploits where any transaction might drain funds.
 
-This role is typically held by a **Guardian multisig** --- a multi-signature wallet (e.g., 5-of-10) controlled by trusted community members. The Guardian exists because governance votes take days, but exploits unfold in minutes. The Guardian can freeze the protocol immediately while governance deliberates on a permanent response.
+This role is typically held by a **Guardian multisig** - a multi-signature wallet (e.g., 5-of-10) controlled by trusted community members. The Guardian exists because governance votes take days, but exploits unfold in minutes. The Guardian can freeze the protocol immediately while governance deliberates on a permanent response.
 
-**What the Guardian cannot do**: change any risk parameter, list assets, upgrade contracts, or touch the treasury. If the Guardian multisig were compromised, the attacker could only pause the protocol --- an inconvenience, but not a loss of funds.
+**What the Guardian cannot do**: change any risk parameter, list assets, upgrade contracts, or touch the treasury. If the Guardian multisig were compromised, the attacker could only pause the protocol - an inconvenience, but not a loss of funds.
 
 ### Layer 4: Asset Listing Admin
 
@@ -71,7 +71,7 @@ The `ASSET_LISTING_ADMIN` role can list new assets on the protocol by calling `i
 
 ### Layer 5: Pool Admin (Governance)
 
-The `POOL_ADMIN` role has the broadest powers. It can do everything the Risk Admin can do, plus list assets, upgrade aToken and debt token implementations, pause reserves, and configure flash loan parameters. This role is held by the governance executor --- the contract that executes proposals after they pass a vote and clear the timelock.
+The `POOL_ADMIN` role has the broadest powers. It can do everything the Risk Admin can do, plus list assets, upgrade aToken and debt token implementations, pause reserves, and configure flash loan parameters. This role is held by the governance executor - the contract that executes proposals after they pass a vote and clear the timelock.
 
 ### Layer 6: AddressesProvider Owner
 
@@ -89,7 +89,7 @@ The owner of the PoolAddressesProvider sits at the top. This address can upgrade
 | 5 | Pool Admin | Full configuration and upgrades | Governance executor |
 | 6 | Provider Owner | Upgrade core implementations, change ACL admin | Governance executor (long timelock) |
 
----
+-
 
 ## 3. The Governance Flow: From Idea to Execution
 
@@ -101,7 +101,7 @@ A community member or risk service provider publishes a proposal on the Aave gov
 
 ### Step 2: The Payload Contract
 
-The proposal's on-chain component is a **payload contract** --- a simple smart contract that encodes the exact changes to be executed. It is deployed in advance so voters can inspect precisely what will happen:
+The proposal's on-chain component is a **payload contract** - a simple smart contract that encodes the exact changes to be executed. It is deployed in advance so voters can inspect precisely what will happen:
 
 ```solidity
 contract UpdateUSDCReserveFactorPayload {
@@ -111,7 +111,7 @@ contract UpdateUSDCReserveFactorPayload {
 }
 ```
 
-Transparency is the point: anyone can read the payload and verify it matches the proposal's stated intent. Proposals often bundle multiple changes into a single payload --- updating caps, rates, and parameters for several assets at once.
+Transparency is the point: anyone can read the payload and verify it matches the proposal's stated intent. Proposals often bundle multiple changes into a single payload - updating caps, rates, and parameters for several assets at once.
 
 ### Step 3: On-Chain Vote
 
@@ -119,7 +119,7 @@ AAVE token holders (and stkAAVE holders) vote on the proposal. The voting period
 
 ### Step 4: Timelock
 
-After the vote passes, the proposal enters a **timelock** --- a mandatory delay (typically 24-48 hours) before execution. The timelock exists as a final safety check. If the community discovers a problem with the proposal after it passes, they have time to mobilize the Guardian to pause the protocol or take other protective action before the change takes effect.
+After the vote passes, the proposal enters a **timelock** - a mandatory delay (typically 24-48 hours) before execution. The timelock exists as a final safety check. If the community discovers a problem with the proposal after it passes, they have time to mobilize the Guardian to pause the protocol or take other protective action before the change takes effect.
 
 ### Step 5: Execution
 
@@ -135,7 +135,7 @@ After the timelock expires, anyone can trigger execution. The governance executo
 | Timelock | Last-resort safety window | Malicious proposals executing instantly |
 | Execution | Permissionless triggering | Proposals stalling due to inaction |
 
----
+-
 
 ## 4. Emergency Controls: Freeze vs. Pause
 
@@ -149,7 +149,7 @@ Freezing a reserve blocks new supply and new borrows, but allows everything else
 - Be liquidated if their positions are unhealthy
 - Execute flash loans
 
-Freezing is appropriate when there is concern about an asset --- for example, a stablecoin showing early signs of depegging --- but no active exploit. It prevents new exposure while allowing existing positions to be safely unwound.
+Freezing is appropriate when there is concern about an asset - for example, a stablecoin showing early signs of depegging - but no active exploit. It prevents new exposure while allowing existing positions to be safely unwound.
 
 **Who can freeze**: Risk Admin or Pool Admin.
 
@@ -157,7 +157,7 @@ Freezing is appropriate when there is concern about an asset --- for example, a 
 
 Pausing a reserve stops everything. No supply, no borrow, no repay, no withdraw, no liquidation, no flash loans. The reserve is completely inert.
 
-Pausing is appropriate during an active exploit where any transaction --- even a repay or withdrawal --- might be used to drain funds. It is a blunt instrument, but when an exploit is in progress, speed matters more than precision.
+Pausing is appropriate during an active exploit where any transaction - even a repay or withdrawal - might be used to drain funds. It is a blunt instrument, but when an exploit is in progress, speed matters more than precision.
 
 **Who can pause**: Emergency Admin (Guardian) or Pool Admin. The Emergency Admin can also pause the entire pool (all reserves) in a single transaction.
 
@@ -182,13 +182,13 @@ Pausing is appropriate during an active exploit where any transaction --- even a
 
 This separation ensures that emergency response is fast while permanent changes go through rigorous review.
 
----
+-
 
 ## 5. Upgradeability: Same Address, New Logic
 
 <video src="animations/final/proxy_upgrade.webm" controls autoplay loop muted playsinline style="width:100%;max-width:800px;border-radius:8px;margin:20px 0"></video>
 
-Aave's core contracts --- Pool, PoolConfigurator, aTokens, and debt tokens --- are all deployed behind proxies. This means the protocol can fix bugs, add features, and improve gas efficiency without changing any contract addresses or losing any state.
+Aave's core contracts - Pool, PoolConfigurator, aTokens, and debt tokens - are all deployed behind proxies. This means the protocol can fix bugs, add features, and improve gas efficiency without changing any contract addresses or losing any state.
 
 ### How It Works Conceptually
 
@@ -198,7 +198,7 @@ To upgrade, governance deploys a new implementation contract and points the prox
 
 ### Storage Compatibility
 
-The critical constraint: new implementations must maintain storage compatibility with the old ones. Existing storage variables must remain in the same positions. New variables can only be added at the end. Variables cannot be removed or retyped. Aave's contracts include reserved storage gaps --- arrays of unused storage slots --- that can be consumed by future upgrades without disrupting the layout.
+The critical constraint: new implementations must maintain storage compatibility with the old ones. Existing storage variables must remain in the same positions. New variables can only be added at the end. Variables cannot be removed or retyped. Aave's contracts include reserved storage gaps - arrays of unused storage slots - that can be consumed by future upgrades without disrupting the layout.
 
 ### Who Can Upgrade
 
@@ -207,7 +207,7 @@ The critical constraint: new implementations must maintain storage compatibility
 
 Upgrades are the most sensitive governance action. A malicious Pool implementation could drain every asset in the protocol. This is why upgrades require the highest level of authority and the longest timelock.
 
----
+-
 
 ## 6. Portal: Cross-Chain Liquidity (Brief Overview)
 
@@ -224,13 +224,13 @@ Portal is an Aave V3 feature designed for cross-chain liquidity movement. It all
 
 Portal has seen limited adoption in practice. Cross-chain bridging remains a challenging problem with significant trust assumptions, and most Aave V3 deployments operate as independent markets on each chain. The architecture is available for future use as cross-chain infrastructure matures.
 
----
+-
 
 ## 7. Why the Guardian Cannot Have More Power
 
 A natural question: why not give the Guardian multisig broader powers so it can respond to more situations quickly? The answer is about limiting damage from compromise.
 
-If the Guardian could only pause, a compromised multisig causes an inconvenience --- the protocol is frozen until governance reacts. Users cannot transact, but no funds are lost. Governance can replace the Guardian and unpause.
+If the Guardian could only pause, a compromised multisig causes an inconvenience - the protocol is frozen until governance reacts. Users cannot transact, but no funds are lost. Governance can replace the Guardian and unpause.
 
 If the Guardian could change risk parameters, a compromised multisig could set LTVs to 100%, liquidation thresholds to 100%, and drain the protocol through manipulated positions. If the Guardian could upgrade contracts, a compromised multisig could deploy a malicious implementation that transfers all assets to the attacker.
 
@@ -245,24 +245,24 @@ The principle is clear: **the cost of compromise should be proportional to the s
 | Parameter adjustment needed | Governance vote | Days | Reserve factor update for a stable asset |
 | Contract bug requiring fix | Governance upgrade | Weeks | Non-critical storage optimization |
 
----
+-
 
 ## 8. Putting It All Together
 
 Aave V3's governance architecture embodies a clear design philosophy: **distribute power according to risk, and require process proportional to danger**.
 
-Ordinary users need no permission --- the protocol is open. Risk parameter adjustments are delegated to specialists who can act quickly within defined bounds. Emergency response is handled by a multisig that can freeze the protocol in minutes but cannot steal funds. And the most consequential decisions --- upgrading core contracts, listing assets, managing the treasury --- require the full weight of community governance with voting, timelocks, and transparent payload contracts.
+Ordinary users need no permission - the protocol is open. Risk parameter adjustments are delegated to specialists who can act quickly within defined bounds. Emergency response is handled by a multisig that can freeze the protocol in minutes but cannot steal funds. And the most consequential decisions - upgrading core contracts, listing assets, managing the treasury - require the full weight of community governance with voting, timelocks, and transparent payload contracts.
 
 This layered approach means Aave can respond to a market crash in minutes (Guardian pauses), implement a risk parameter change in days (Risk Admin or governance), and upgrade its core logic in weeks (full governance with extended timelock). Each speed corresponds to the appropriate level of scrutiny for the action being taken.
 
----
+-
 
 ## Summary
 
 Aave V3's governance is built on three pillars:
 
-- **PoolAddressesProvider** --- the central registry that enables upgradeability and discoverability. Every contract looks up addresses here rather than hardcoding them.
-- **ACLManager** --- role-based access control that distributes power across a trust hierarchy, from permissionless users to the Guardian multisig to full governance.
-- **Proxy upgradeability** --- allows the protocol to evolve (fix bugs, add features) without changing addresses or losing state.
+- **PoolAddressesProvider** - the central registry that enables upgradeability and discoverability. Every contract looks up addresses here rather than hardcoding them.
+- **ACLManager** - role-based access control that distributes power across a trust hierarchy, from permissionless users to the Guardian multisig to full governance.
+- **Proxy upgradeability** - allows the protocol to evolve (fix bugs, add features) without changing addresses or losing state.
 
-In practice, this creates a two-track system: a Guardian multisig for emergency response (pause in minutes) and full governance for permanent changes (votes and timelocks over days). The principle throughout is least privilege --- each role has exactly the power it needs and no more.
+In practice, this creates a two-track system: a Guardian multisig for emergency response (pause in minutes) and full governance for permanent changes (votes and timelocks over days). The principle throughout is least privilege - each role has exactly the power it needs and no more.

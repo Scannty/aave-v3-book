@@ -1,8 +1,8 @@
 # Chapter 11: Reserves, Treasury, and Protocol Revenue
 
-Every sustainable business needs a revenue model. Aave is no different --- except its revenue model is embedded directly in smart contract logic, not in invoices or subscription plans. Every borrow, every flash loan, every liquidation quietly directs a small share of value to the Aave treasury. Understanding this flow is essential because it explains the protocol's long-term sustainability, what funds governance operations, and why suppliers don't receive 100% of the interest borrowers pay.
+Every sustainable business needs a revenue model. Aave is no different - except its revenue model is embedded directly in smart contract logic, not in invoices or subscription plans. Every borrow, every flash loan, every liquidation quietly directs a small share of value to the Aave treasury. Understanding this flow is essential because it explains the protocol's long-term sustainability, what funds governance operations, and why suppliers don't receive 100% of the interest borrowers pay.
 
----
+-
 
 ## 1. Aave's Three Revenue Streams
 
@@ -14,11 +14,11 @@ Aave earns money in three ways, each tied to a different protocol activity:
 | **Flash loan premiums** | A portion of the flash loan fee goes to the treasury | Every time someone executes a flash loan |
 | **Liquidation protocol fee** | A cut of the liquidation bonus goes to the treasury | Every time a position is liquidated |
 
-The reserve factor is the primary, steady revenue stream --- it generates income as long as anyone is borrowing. Flash loan premiums are episodic, spiking during arbitrage-heavy periods. Liquidation fees are correlated with market volatility --- they surge during crashes when liquidations are frequent.
+The reserve factor is the primary, steady revenue stream - it generates income as long as anyone is borrowing. Flash loan premiums are episodic, spiking during arbitrage-heavy periods. Liquidation fees are correlated with market volatility - they surge during crashes when liquidations are frequent.
 
-All three revenue streams ultimately result in the same thing: **aTokens minted to the treasury address**. The treasury is, in economic terms, just another depositor in Aave --- one whose balance grows automatically from both new revenue and the interest earned on its existing holdings.
+All three revenue streams ultimately result in the same thing: **aTokens minted to the treasury address**. The treasury is, in economic terms, just another depositor in Aave - one whose balance grows automatically from both new revenue and the interest earned on its existing holdings.
 
----
+-
 
 ## 2. The Reserve Factor: Aave's Tax on Borrow Interest
 
@@ -41,8 +41,8 @@ The `(1 - reserveFactor)` term is the protocol's take. A higher reserve factor m
 
 | Asset Category | Typical Reserve Factor | Rationale |
 |---|---|---|
-| Stablecoins (USDC, USDT, DAI) | 10-20% | Low risk, high volume --- modest tax on a large base |
-| Major assets (ETH, WBTC) | 10-20% | Established, liquid --- standard rate |
+| Stablecoins (USDC, USDT, DAI) | 10-20% | Low risk, high volume - modest tax on a large base |
+| Major assets (ETH, WBTC) | 10-20% | Established, liquid - standard rate |
 | Volatile/newer assets | 20-35% | Higher risk to the protocol justifies a larger cut |
 | High-risk assets | 30-50% | Compensates for elevated bad debt risk; builds a buffer |
 
@@ -60,7 +60,7 @@ $$\text{Suppliers receive (90\%)} = \$5{,}000{,}000 \times 90\% = \$4{,}500{,}00
 
 That \$500,000 per year is for USDC alone. Multiply across dozens of assets and multiple chain deployments, and the reserve factor becomes a substantial revenue engine.
 
----
+-
 
 ## 3. How Treasury Accrual Works
 
@@ -80,7 +80,7 @@ The running counter, `accruedToTreasury`, accumulates across many user interacti
 
 ### Why Scaled Amounts Matter
 
-The treasury's accrued revenue is stored as a "scaled" amount --- divided by the liquidity index --- for the same reason all aToken balances are stored this way (Chapter 3). This means the treasury's pending balance automatically grows as interest accrues. The treasury earns interest on its interest, just like any other supplier.
+The treasury's accrued revenue is stored as a "scaled" amount - divided by the liquidity index - for the same reason all aToken balances are stored this way (Chapter 3). This means the treasury's pending balance automatically grows as interest accrues. The treasury earns interest on its interest, just like any other supplier.
 
 ### Numerical Walkthrough
 
@@ -103,9 +103,9 @@ Here is the subtle but powerful implication: once the treasury holds aUSDC, thos
 - **Direct revenue**: new aTokens minted from the reserve factor
 - **Passive income**: interest earned on the treasury's existing aToken holdings
 
-If the treasury holds \$10 million of aUSDC and the USDC supply rate is 3%, it earns \$300,000 per year in passive interest --- on top of new revenue flowing in from the reserve factor.
+If the treasury holds \$10 million of aUSDC and the USDC supply rate is 3%, it earns \$300,000 per year in passive interest - on top of new revenue flowing in from the reserve factor.
 
----
+-
 
 ## 4. Flash Loan Revenue
 
@@ -136,7 +136,7 @@ The supplier portion stays in the aToken contract automatically (it increases th
 
 Aave V3 introduced the `FLASH_BORROWER` role. Addresses granted this role pay zero premium on flash loans. Why would the protocol give away revenue? Because some integrations (like liquidation bots that protect the protocol's health) are worth subsidizing. A liquidation bot that can flash-borrow for free will liquidate more positions, reducing bad debt risk for the entire system.
 
----
+-
 
 ## 5. Liquidation Protocol Fee
 
@@ -144,7 +144,7 @@ The third revenue source, new in V3, is a cut of the liquidation bonus. When a p
 
 ### How the Split Works
 
-The liquidation protocol fee is configured per asset and expressed as a percentage of the liquidation bonus. It does not increase the total bonus --- it reallocates part of the bonus from the liquidator to the treasury.
+The liquidation protocol fee is configured per asset and expressed as a percentage of the liquidation bonus. It does not increase the total bonus - it reallocates part of the bonus from the liquidator to the treasury.
 
 ### Numerical Example
 
@@ -167,13 +167,13 @@ The liquidator still profits handsomely (\$45 on a \$1,000 liquidation), but the
 
 ### Revenue Characteristics
 
-Liquidation protocol fees are the most volatile revenue source. During calm markets, few positions are liquidated and this revenue is minimal. During sharp downturns --- exactly when a protocol's treasury needs to be robust --- liquidation revenue surges. It acts as a natural counter-cyclical revenue stream.
+Liquidation protocol fees are the most volatile revenue source. During calm markets, few positions are liquidated and this revenue is minimal. During sharp downturns - exactly when a protocol's treasury needs to be robust - liquidation revenue surges. It acts as a natural counter-cyclical revenue stream.
 
----
+-
 
 ## 6. The Treasury as Aave's Balance Sheet
 
-The treasury is not a complex contract. It is simply an address that holds aTokens. But economically, it functions as Aave's balance sheet --- the accumulated wealth of the protocol.
+The treasury is not a complex contract. It is simply an address that holds aTokens. But economically, it functions as Aave's balance sheet - the accumulated wealth of the protocol.
 
 ### What the Treasury Holds
 
@@ -190,17 +190,17 @@ Governance proposals can direct treasury funds toward:
 - **Risk management**: compensating risk service providers (Gauntlet, Chaos Labs) who model and recommend parameter changes
 - **Bad debt coverage**: in extreme scenarios, treasury funds can cover protocol shortfalls
 
-To withdraw funds, governance passes a proposal that redeems aTokens from the treasury for the underlying assets. This is the same as any supplier withdrawing --- the treasury burns its aTokens and receives the underlying tokens.
+To withdraw funds, governance passes a proposal that redeems aTokens from the treasury for the underlying assets. This is the same as any supplier withdrawing - the treasury burns its aTokens and receives the underlying tokens.
 
 ### The Compounding Effect
 
 The treasury's economic position is remarkably favorable. It receives new revenue from three sources, and all of that revenue earns additional interest once it arrives as aTokens. Over time, this compounding creates a growing safety buffer for the protocol. A well-funded treasury is the first line of defense against black swan events.
 
----
+-
 
 ## 7. PoolConfigurator: The Admin Panel
 
-Every parameter described in this chapter --- reserve factors, flash loan premiums, liquidation protocol fees --- is configured through the `PoolConfigurator` contract. This is the administrative interface for Aave governance. No one, not even the Pool contract itself, can change these parameters without going through PoolConfigurator.
+Every parameter described in this chapter - reserve factors, flash loan premiums, liquidation protocol fees - is configured through the `PoolConfigurator` contract. This is the administrative interface for Aave governance. No one, not even the Pool contract itself, can change these parameters without going through PoolConfigurator.
 
 ### What Governance Can Tune
 
@@ -234,7 +234,7 @@ This separation of concerns means the Pool itself contains no admin logic. It st
 
 One of the most consequential governance actions is listing a new asset. When governance calls `initReserves()` on PoolConfigurator, the protocol deploys proxy contracts for the aToken, stable debt token, and variable debt token, initializes them with the correct parameters, registers the reserve in the Pool, and sets the interest rate strategy. A single governance proposal can list multiple assets at once.
 
----
+-
 
 ## 8. Putting It All Together: The Revenue Lifecycle
 
@@ -264,14 +264,14 @@ $$\text{Total} = \$266{,}700$$
 
 And this is for a single asset on a single chain. Across all assets and all deployments, Aave generates millions in monthly revenue, all flowing into a treasury that earns compound interest on its holdings.
 
----
+-
 
 ## Summary
 
 Aave V3's revenue model is built on three pillars:
 
-- **Reserve factor** --- the steady, predictable revenue stream. A tax on borrow interest (typically 10-20%) that flows continuously to the treasury as long as anyone is borrowing.
-- **Flash loan premiums** --- episodic revenue that scales with DeFi activity. Split between suppliers and treasury.
-- **Liquidation protocol fees** --- counter-cyclical revenue that surges during market turbulence when the treasury needs it most.
+- **Reserve factor** - the steady, predictable revenue stream. A tax on borrow interest (typically 10-20%) that flows continuously to the treasury as long as anyone is borrowing.
+- **Flash loan premiums** - episodic revenue that scales with DeFi activity. Split between suppliers and treasury.
+- **Liquidation protocol fees** - counter-cyclical revenue that surges during market turbulence when the treasury needs it most.
 
-All revenue arrives as aTokens, which compound automatically. The treasury is Aave's balance sheet --- it funds development, security, grants, and acts as a buffer against protocol losses. Every parameter is configurable by governance through the PoolConfigurator, giving AAVE token holders fine-grained control over the protocol's economic model.
+All revenue arrives as aTokens, which compound automatically. The treasury is Aave's balance sheet - it funds development, security, grants, and acts as a buffer against protocol losses. Every parameter is configurable by governance through the PoolConfigurator, giving AAVE token holders fine-grained control over the protocol's economic model.

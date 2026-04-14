@@ -4,19 +4,19 @@ Here is a question that reveals a fundamental tension in lending protocol design
 
 Both assets are USD stablecoins. Both are worth \$1. The chance that USDC drops to \$0.90 while DAI stays at \$1.00 is vanishingly small. Yet under default risk parameters, the protocol forces you to leave \$2,300 locked up as a safety buffer against a scenario that almost never happens. That is wasted capital.
 
-Now consider a different case: you deposit \$10,000 of ETH and want to borrow USDC. Here, the 20% buffer makes perfect sense --- ETH can drop 20% in a day. The collateral and debt are fundamentally different assets with uncorrelated risk profiles.
+Now consider a different case: you deposit \$10,000 of ETH and want to borrow USDC. Here, the 20% buffer makes perfect sense - ETH can drop 20% in a day. The collateral and debt are fundamentally different assets with uncorrelated risk profiles.
 
-The problem is clear: a one-size-fits-all approach to risk parameters is either too conservative for correlated assets or too aggressive for uncorrelated ones. Aave V3 solves this with **E-Mode (Efficiency Mode)** --- a system that gives correlated asset pairs dramatically better borrowing terms.
+The problem is clear: a one-size-fits-all approach to risk parameters is either too conservative for correlated assets or too aggressive for uncorrelated ones. Aave V3 solves this with **E-Mode (Efficiency Mode)** - a system that gives correlated asset pairs dramatically better borrowing terms.
 
 <video src="animations/final/emode_comparison.webm" controls autoplay loop muted playsinline style="width:100%;max-width:800px;border-radius:8px;margin:20px 0"></video>
 
----
+-
 
 ## 1. The Capital Efficiency Problem
 
 Let us put concrete numbers on the waste.
 
-**Normal mode --- USDC collateral, borrow DAI:**
+**Normal mode - USDC collateral, borrow DAI:**
 
 | Parameter | Value |
 |-----------|-------|
@@ -27,7 +27,7 @@ Let us put concrete numbers on the waste.
 
 That \$2,300 is earning supplier yield, but you cannot deploy it. For a yield farmer who wants to supply USDC and borrow DAI to deposit elsewhere, this 23% overhead directly reduces returns.
 
-**E-Mode --- USDC collateral, borrow DAI (Stablecoin category):**
+**E-Mode - USDC collateral, borrow DAI (Stablecoin category):**
 
 | Parameter | Value |
 |-----------|-------|
@@ -36,9 +36,9 @@ That \$2,300 is earning supplier yield, but you cannot deploy it. For a yield fa
 | Max borrow | **\$9,300** |
 | Capital locked (unborrowed) | \$700 |
 
-That is **\$1,600 more borrowing power** from the same collateral. The locked capital drops from \$2,300 to \$700 --- a 70% reduction in idle capital. For someone running leveraged stablecoin strategies, this difference compounds into significantly higher returns.
+That is **\$1,600 more borrowing power** from the same collateral. The locked capital drops from \$2,300 to \$700 - a 70% reduction in idle capital. For someone running leveraged stablecoin strategies, this difference compounds into significantly higher returns.
 
----
+-
 
 ## 2. How E-Mode Works
 
@@ -50,7 +50,7 @@ E-Mode groups correlated assets into **categories**. When a user opts into a cat
 | Liquidation threshold | 82.5% | 95% | Correlated assets rarely gap apart |
 | Liquidation bonus | 5% | 1% | Smaller price gaps mean liquidators need less incentive |
 
-The lower liquidation bonus is particularly interesting. In normal mode, a liquidator needs a 5% bonus because the collateral (ETH) might be crashing while they execute. In E-Mode for stablecoins, the collateral and debt are nearly identical in value --- a 1% bonus is plenty of incentive.
+The lower liquidation bonus is particularly interesting. In normal mode, a liquidator needs a 5% bonus because the collateral (ETH) might be crashing while they execute. In E-Mode for stablecoins, the collateral and debt are nearly identical in value - a 1% bonus is plenty of incentive.
 
 ### The Categories
 
@@ -76,7 +76,7 @@ A typical Aave V3 deployment might define:
 
 Assets like WBTC (category 0) do not belong to any E-Mode group and always use their default parameters.
 
----
+-
 
 ## 3. The Rules of E-Mode
 
@@ -86,7 +86,7 @@ E-Mode is not a free lunch. It comes with a strict constraint and some important
 
 ### Rule 1: All Borrows Must Match the Category
 
-When you are in E-Mode category 1 (Stablecoins), every asset you borrow must also belong to category 1. You can borrow USDC, DAI, or USDT --- but not WETH or WBTC. This makes sense: the boosted parameters assume correlated assets on both sides. Borrowing a volatile asset against stablecoin collateral would defeat the purpose.
+When you are in E-Mode category 1 (Stablecoins), every asset you borrow must also belong to category 1. You can borrow USDC, DAI, or USDT - but not WETH or WBTC. This makes sense: the boosted parameters assume correlated assets on both sides. Borrowing a volatile asset against stablecoin collateral would defeat the purpose.
 
 If you have existing borrows that do not match the target category, you must repay them before entering E-Mode.
 
@@ -98,9 +98,9 @@ This means you can have a mixed portfolio, but the benefit is proportional to ho
 
 ### Rule 3: Exiting Must Not Break Your Position
 
-To exit E-Mode (set category to 0), the protocol recalculates your health factor using default parameters. If your position is too leveraged to survive the switch --- health factor would drop below 1 --- the exit is blocked. You must repay debt or add collateral first.
+To exit E-Mode (set category to 0), the protocol recalculates your health factor using default parameters. If your position is too leveraged to survive the switch - health factor would drop below 1 - the exit is blocked. You must repay debt or add collateral first.
 
----
+-
 
 ## 4. Numerical Examples
 
@@ -144,7 +144,7 @@ Bob wants to amplify his stETH staking yield (~3-4% APR). He enters ETH Correlat
 | E-Mode LTV | 93% |
 | Max WETH borrow | 93 WETH |
 
-Bob can borrow 93 WETH instead of 69. If he loops (supply stETH, borrow WETH, swap to stETH, repeat --- or use a flash loan), he can build a heavily leveraged staking position:
+Bob can borrow 93 WETH instead of 69. If he loops (supply stETH, borrow WETH, swap to stETH, repeat - or use a flash loan), he can build a heavily leveraged staking position:
 
 1. Start with 10 stETH
 2. Flash loan 90 WETH, swap to stETH, supply 100 stETH total
@@ -158,8 +158,8 @@ Bob is now earning staking yield on 100 stETH while paying borrow interest on 90
 What happens when collateral spans multiple categories?
 
 Charlie is in Stablecoin E-Mode with:
-- \$8,000 in USDC (category 1 --- gets E-Mode boost)
-- \$3,000 in WETH (category 2 --- uses default parameters)
+- \$8,000 in USDC (category 1 - gets E-Mode boost)
+- \$3,000 in WETH (category 2 - uses default parameters)
 
 | Collateral | Value | LTV Used | Weighted Contribution |
 |------------|-------|----------|----------------------|
@@ -172,7 +172,7 @@ Charlie is in Stablecoin E-Mode with:
 
 The WETH contributes collateral value using its default parameters. The USDC gets the E-Mode boost. The blended result falls between the two.
 
----
+-
 
 ## 5. Oracle Override: Eliminating Noise
 
@@ -182,7 +182,7 @@ One of the most subtle features of E-Mode is the optional **custom price oracle*
 
 Chainlink reports real market prices. Stablecoins occasionally trade at \$0.998 or \$1.003 due to market microstructure, DEX imbalances, or momentary liquidity gaps. These tiny deviations are economically meaningless for a stablecoin-against-stablecoin position, but they create noise in the health factor calculation.
 
-In extreme cases, a minor depeg of \$0.005 could push a highly leveraged E-Mode position below the liquidation threshold --- triggering a liquidation that costs the borrower 1% of their collateral for a risk that does not actually exist.
+In extreme cases, a minor depeg of \$0.005 could push a highly leveraged E-Mode position below the liquidation threshold - triggering a liquidation that costs the borrower 1% of their collateral for a risk that does not actually exist.
 
 ### The Solution
 
@@ -196,14 +196,14 @@ The difference is small in this example, but for positions at the margin, it pre
 
 ### The Trade-off
 
-Custom oracles are a double-edged sword. If a stablecoin genuinely depegs --- say, to \$0.80 --- a fixed oracle would still price it at \$1.00 within E-Mode. This could delay necessary liquidations and create bad debt.
+Custom oracles are a double-edged sword. If a stablecoin genuinely depegs - say, to \$0.80 - a fixed oracle would still price it at \$1.00 within E-Mode. This could delay necessary liquidations and create bad debt.
 
 In practice, this risk is managed by:
 1. Only applying custom oracles to thoroughly vetted assets
 2. Governance monitoring and the ability to quickly remove assets from categories
 3. Most deployments using the default oracle even for E-Mode, relying solely on the boosted LTV and threshold for efficiency
 
----
+-
 
 ## 6. E-Mode and Liquidations
 
@@ -213,8 +213,8 @@ Liquidations in E-Mode use the E-Mode parameters, not the asset defaults. This h
 
 A stablecoin E-Mode position with \$10,000 USDC and \$9,400 DAI debt:
 
-- **In E-Mode**: HF = (\$10,000 x 0.95) / \$9,400 = 1.011 --- healthy
-- **Without E-Mode**: HF = (\$10,000 x 0.80) / \$9,400 = 0.851 --- deep in liquidation
+- **In E-Mode**: HF = (\$10,000 x 0.95) / \$9,400 = 1.011 - healthy
+- **Without E-Mode**: HF = (\$10,000 x 0.80) / \$9,400 = 0.851 - deep in liquidation
 
 The same position is healthy in E-Mode and deeply underwater without it. The 95% threshold means you tolerate much more debt relative to collateral before becoming liquidatable.
 
@@ -229,7 +229,7 @@ If liquidation does occur, the 1% bonus (vs. 5% normally) means the borrower los
 
 This makes sense economically. The collateral and debt are closely priced, so the liquidator faces minimal price risk. They do not need a large bonus to be incentivized.
 
----
+-
 
 ## 7. Entering and Exiting E-Mode
 
@@ -251,7 +251,7 @@ Call `Pool.setUserEMode(0)`. The protocol:
 
 This creates an interesting situation: a position that is perfectly healthy in E-Mode might be too leveraged to exit. The user must deleverage first.
 
----
+-
 
 ## Key Takeaways
 
@@ -261,7 +261,7 @@ This creates an interesting situation: a position that is perfectly healthy in E
 
 3. **The restriction is on borrows, not collateral.** All borrowed assets must belong to the active E-Mode category. Collateral can be anything, but only matching collateral gets boosted parameters.
 
-4. **The capital efficiency gain is substantial.** On \$10,000 USDC, E-Mode unlocks \$9,300 of borrowing power vs. \$7,700 normally --- \$1,600 more, with idle capital dropping from \$2,300 to \$700.
+4. **The capital efficiency gain is substantial.** On \$10,000 USDC, E-Mode unlocks \$9,300 of borrowing power vs. \$7,700 normally - \$1,600 more, with idle capital dropping from \$2,300 to \$700.
 
 5. **Oracle override** can eliminate spurious liquidations from minor price fluctuations between pegged assets, but introduces risk if the peg genuinely breaks. Most deployments use it conservatively.
 

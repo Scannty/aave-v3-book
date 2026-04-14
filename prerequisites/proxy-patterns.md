@@ -1,10 +1,10 @@
 # Proxy Patterns and Upgradeability
 
-Smart contracts on Ethereum are immutable by default. Once deployed, their bytecode cannot change. This is a feature --- users can verify exactly what code will execute. But it is also a constraint. Bugs cannot be patched. New features cannot be added. For a protocol like Aave V3, which manages billions of dollars and must evolve over time, immutability alone is not practical.
+Smart contracts on Ethereum are immutable by default. Once deployed, their bytecode cannot change. This is a feature - users can verify exactly what code will execute. But it is also a constraint. Bugs cannot be patched. New features cannot be added. For a protocol like Aave V3, which manages billions of dollars and must evolve over time, immutability alone is not practical.
 
 **Upgradeable proxy patterns** solve this by separating the contract's storage and address from its logic.
 
----
+-
 
 ## Why Upgradeability Matters for DeFi
 
@@ -24,7 +24,7 @@ With an upgradeable proxy:
 
 Aave V3 uses this approach for its core contracts, including the `Pool`, `PoolConfigurator`, and several others. Governance controls when and how upgrades happen.
 
----
+-
 
 ## The Core Mechanism: delegatecall
 
@@ -42,9 +42,9 @@ A `delegatecall` executes code in the **caller's** context:
 
 <video src="animations/final/delegatecall.webm" controls autoplay loop muted playsinline style="width:100%;max-width:800px;border-radius:8px;margin:20px 0"></video>
 
-This means the proxy holds all the state (balances, mappings, etc.) while the implementation contract provides the logic. The implementation is stateless --- it only defines what to do, not where the data lives.
+This means the proxy holds all the state (balances, mappings, etc.) while the implementation contract provides the logic. The implementation is stateless - it only defines what to do, not where the data lives.
 
----
+-
 
 ## How a Basic Proxy Works
 
@@ -87,7 +87,7 @@ contract Proxy {
 
 The `fallback()` function intercepts every call to the proxy and forwards it via `delegatecall` to the implementation. Since Solidity routes function calls by matching the first 4 bytes of calldata (the function selector), the proxy does not need to know anything about the implementation's interface.
 
----
+-
 
 ## Storage Layout: The Critical Constraint
 
@@ -152,7 +152,7 @@ contract V2 {
 
 Aave V3 uses storage gaps in its upgradeable contracts to allow safe future extensions.
 
----
+-
 
 ## Transparent Proxy Pattern
 
@@ -180,14 +180,14 @@ This means the admin **cannot** interact with the implementation's functions thr
 
 In practice, the admin is typically a `ProxyAdmin` contract controlled by governance, not an EOA.
 
----
+-
 
 ## UUPS Pattern
 
 The **Universal Upgradeable Proxy Standard** (UUPS, EIP-1822) takes a different approach: the upgrade logic lives in the **implementation**, not the proxy.
 
 ```solidity
-// The proxy is minimal --- just delegatecall
+// The proxy is minimal - just delegatecall
 contract UUPSProxy {
     fallback() external payable {
         _delegate(_getImplementation());
@@ -215,7 +215,7 @@ Advantages of UUPS over Transparent Proxy:
 
 The main risk with UUPS: if you deploy a new implementation that does not include the `upgradeTo` function, the proxy becomes permanently non-upgradeable. There is no fallback mechanism.
 
----
+-
 
 ## Initializers Instead of Constructors
 
@@ -236,7 +236,7 @@ contract PoolV1 is Initializable {
 
 The `initializer` modifier (from OpenZeppelin) ensures the function can only be called once, mimicking the one-time execution guarantee of a constructor. You will see `initialize()` functions throughout the Aave V3 codebase.
 
----
+-
 
 ## How Aave V3 Uses Proxies
 
@@ -246,18 +246,18 @@ Aave V3 deploys its core contracts behind upgradeable proxies:
 - **PoolConfigurator**: Manages reserve parameters (LTV, liquidation threshold, interest rate strategy). Also upgradeable.
 - **aTokens and Debt Tokens**: Each reserve's token contracts are deployed behind proxies.
 
-The upgrade process is governed --- the Aave DAO votes on proposals that include the new implementation address. The `PoolAddressesProvider` contract acts as a registry, storing the current proxy addresses and controlling upgrades.
+The upgrade process is governed - the Aave DAO votes on proposals that include the new implementation address. The `PoolAddressesProvider` contract acts as a registry, storing the current proxy addresses and controlling upgrades.
 
 ```
 PoolAddressesProvider
   |
-  |-- getPool() -> Proxy -> PoolV3Implementation
-  |-- getPoolConfigurator() -> Proxy -> PoolConfiguratorV3Implementation
+  |- getPool() -> Proxy -> PoolV3Implementation
+  |- getPoolConfigurator() -> Proxy -> PoolConfiguratorV3Implementation
 ```
 
 When governance approves an upgrade, the `PoolAddressesProvider` calls `setPoolImpl(newAddress)`, which updates the proxy's implementation slot. All calls to the Pool address now execute the new logic, while all storage (user balances, reserve configurations) remains untouched.
 
----
+-
 
 ## Summary
 

@@ -1,10 +1,10 @@
 # Chapter 13: Additional Risk Features
 
-Aave V3 lists hundreds of assets across multiple chains. Each asset carries its own risk profile --- different liquidity depths, different volatility characteristics, different market microstructures. Listing an asset without guardrails would expose the entire protocol to the tail risk of any single token. This chapter covers three features that let governance fine-tune risk at the individual asset level: supply and borrow caps, siloed borrowing, and repay with aTokens.
+Aave V3 lists hundreds of assets across multiple chains. Each asset carries its own risk profile - different liquidity depths, different volatility characteristics, different market microstructures. Listing an asset without guardrails would expose the entire protocol to the tail risk of any single token. This chapter covers three features that let governance fine-tune risk at the individual asset level: supply and borrow caps, siloed borrowing, and repay with aTokens.
 
 These features are small in scope but significant in practice. Caps prevent concentration risk. Siloed borrowing isolates exotic assets from the rest of the debt portfolio. And repay-with-aTokens provides an efficient mechanism for users to unwind positions. Together with Isolation Mode (Chapter 10) and E-Mode (Chapter 9), they form the complete toolkit that lets Aave list aggressively while managing risk conservatively.
 
----
+-
 
 ## 1. Supply and Borrow Caps: Limiting Protocol Exposure
 
@@ -16,9 +16,9 @@ Supply and borrow caps solve this by putting hard limits on how much of any sing
 
 ### What They Are
 
-**Supply cap**: The maximum total amount of an asset that can be deposited into the protocol. Once reached, no new `supply()` calls succeed for that asset. Existing suppliers are completely unaffected --- they can still withdraw, earn interest, and use their positions as collateral.
+**Supply cap**: The maximum total amount of an asset that can be deposited into the protocol. Once reached, no new `supply()` calls succeed for that asset. Existing suppliers are completely unaffected - they can still withdraw, earn interest, and use their positions as collateral.
 
-**Borrow cap**: The maximum total amount of an asset that can be borrowed. Once reached, no new borrows succeed. Existing borrowers are unaffected --- they continue accruing interest and can repay at any time.
+**Borrow cap**: The maximum total amount of an asset that can be borrowed. Once reached, no new borrows succeed. Existing borrowers are unaffected - they continue accruing interest and can repay at any time.
 
 Both caps are denominated in whole tokens (not wei). A supply cap of 2,000,000 for USDC means 2 million USDC regardless of USDC having 6 decimals internally.
 
@@ -52,7 +52,7 @@ The CRV caps are roughly 30x tighter than USDC. If CRV's price crashes, Aave nee
 
 **Caps are all-or-nothing.** If a supply would push the total over the cap, the entire transaction reverts. There is no partial fill.
 
-**Interest can exceed caps.** Total supply and total debt grow over time as interest accrues. A reserve could technically breach its cap through organic interest accumulation. This is by design --- caps prevent new inflows, not the natural growth of existing positions.
+**Interest can exceed caps.** Total supply and total debt grow over time as interest accrues. A reserve could technically breach its cap through organic interest accumulation. This is by design - caps prevent new inflows, not the natural growth of existing positions.
 
 **A cap of zero means uncapped.** This is the default for well-established assets on some deployments. Setting a cap to zero removes the restriction entirely.
 
@@ -65,22 +65,22 @@ Suppose the ETH borrow cap is set to 500,000 ETH. Currently, 495,000 ETH is borr
 - Interest accrues, pushing total debt to 500,200 ETH: **no problem** (organic growth is allowed)
 - Carol tries to borrow 1 ETH: **reverts** (total is already above cap)
 
----
+-
 
 ## 2. Siloed Borrowing: Quarantining Risky Debt
 
 ### The Problem It Solves
 
-Some assets have unusual mechanics that create complex risk interactions when borrowed alongside other assets. Rebasing tokens change their balance automatically. Tokens with transfer fees lose value on every transfer. Tokens with low or fragmented liquidity can be difficult to liquidate. When a user borrows one of these alongside a normal asset like USDC, the risk model for the combined position becomes much harder to reason about --- and much harder to liquidate safely.
+Some assets have unusual mechanics that create complex risk interactions when borrowed alongside other assets. Rebasing tokens change their balance automatically. Tokens with transfer fees lose value on every transfer. Tokens with low or fragmented liquidity can be difficult to liquidate. When a user borrows one of these alongside a normal asset like USDC, the risk model for the combined position becomes much harder to reason about - and much harder to liquidate safely.
 
 ### The Rule
 
 Siloed borrowing is a per-asset flag that says: **if you borrow this asset, it must be your only borrow.** You cannot hold any other borrows simultaneously.
 
 The restriction works in both directions:
-1. If you already have any borrows and try to borrow a siloed asset --- the transaction reverts.
-2. If you already have a siloed borrow and try to borrow anything else (siloed or not) --- the transaction reverts.
-3. If you already have a siloed borrow, you can borrow **more of the same** siloed asset --- that is allowed.
+1. If you already have any borrows and try to borrow a siloed asset - the transaction reverts.
+2. If you already have a siloed borrow and try to borrow anything else (siloed or not) - the transaction reverts.
+3. If you already have a siloed borrow, you can borrow **more of the same** siloed asset - that is allowed.
 
 Your collateral is not affected. You can use any combination of collateral assets. Siloed borrowing only restricts the debt side of your position.
 
@@ -91,30 +91,30 @@ Your collateral is not affected. You can use any combination of collateral asset
 | Step | Action | Result |
 |---|---|---|
 | 1 | Supply ETH as collateral | Succeeds |
-| 2 | Borrow 10,000 GHO (siloed asset) | Succeeds --- no existing borrows |
-| 3 | Borrow 5,000 USDC | **Reverts** --- already have a siloed borrow |
-| 4 | Borrow 5,000 more GHO | Succeeds --- same siloed asset |
+| 2 | Borrow 10,000 GHO (siloed asset) | Succeeds - no existing borrows |
+| 3 | Borrow 5,000 USDC | **Reverts** - already have a siloed borrow |
+| 4 | Borrow 5,000 more GHO | Succeeds - same siloed asset |
 
 **Scenario B: Starting with a regular borrow**
 
 | Step | Action | Result |
 |---|---|---|
 | 1 | Supply ETH as collateral | Succeeds |
-| 2 | Borrow 5,000 USDC | Succeeds --- USDC is not siloed |
-| 3 | Borrow 10,000 GHO (siloed asset) | **Reverts** --- user already has borrows |
-| 4 | Borrow 3,000 DAI | Succeeds --- neither USDC nor DAI is siloed |
+| 2 | Borrow 5,000 USDC | Succeeds - USDC is not siloed |
+| 3 | Borrow 10,000 GHO (siloed asset) | **Reverts** - user already has borrows |
+| 4 | Borrow 3,000 DAI | Succeeds - neither USDC nor DAI is siloed |
 
 ### How Siloed Borrowing Differs from Isolation Mode and E-Mode
 
-This is one of the most commonly confused distinctions in Aave V3. The three features are orthogonal --- they restrict different things and can be active simultaneously:
+This is one of the most commonly confused distinctions in Aave V3. The three features are orthogonal - they restrict different things and can be active simultaneously:
 
 | Feature | What It Restricts | Which Side of the Position | Example |
 |---|---|---|---|
-| **Isolation Mode** | Which assets can be used as collateral | Collateral side | "TOKEN-X is isolated --- if it is your only collateral, you can only borrow approved stablecoins, up to a debt ceiling" |
-| **Siloed Borrowing** | Which assets can be borrowed together | Debt side | "GHO is siloed --- if you borrow GHO, you cannot also borrow USDC" |
+| **Isolation Mode** | Which assets can be used as collateral | Collateral side | "TOKEN-X is isolated - if it is your only collateral, you can only borrow approved stablecoins, up to a debt ceiling" |
+| **Siloed Borrowing** | Which assets can be borrowed together | Debt side | "GHO is siloed - if you borrow GHO, you cannot also borrow USDC" |
 | **E-Mode** | What LTV and liquidation parameters apply | Both sides | "In stablecoin E-Mode, your USDC collateral gets 97% LTV instead of 77%" |
 
-A user could theoretically be in Isolation Mode (using an isolated collateral asset), borrowing a siloed asset, and be in E-Mode --- all at the same time. The features compose independently because they operate on different dimensions of the position.
+A user could theoretically be in Isolation Mode (using an isolated collateral asset), borrowing a siloed asset, and be in E-Mode - all at the same time. The features compose independently because they operate on different dimensions of the position.
 
 ### Why Not Just Use Isolation Mode?
 
@@ -136,9 +136,9 @@ Governance typically applies siloed borrowing to assets with one or more of thes
 - Non-standard ERC-20 behavior
 - Novel economic mechanisms that complicate liquidation
 
-GHO itself is a notable example --- it is siloed because its minting/burning mechanics differ from pool-based borrowing, and mixing GHO debt with regular pool debt in the same position would complicate the risk model.
+GHO itself is a notable example - it is siloed because its minting/burning mechanics differ from pool-based borrowing, and mixing GHO debt with regular pool debt in the same position would complicate the risk model.
 
----
+-
 
 ## 3. Repay with aTokens: Unwinding Positions Efficiently
 
@@ -199,15 +199,15 @@ The net position is identical. But the debt is gone and the user's position is s
 
 ### Limitations
 
-**Same asset only.** You can only use aUSDC to repay USDC debt, aWETH to repay WETH debt, and so on. You cannot cross assets --- aUSDC cannot repay WETH debt.
+**Same asset only.** You can only use aUSDC to repay USDC debt, aWETH to repay WETH debt, and so on. You cannot cross assets - aUSDC cannot repay WETH debt.
 
 **Self-only.** You can only burn your own aTokens to repay your own debt. Unlike normal `repay()`, where you can repay on behalf of another user, `repayWithATokens()` is restricted to the caller.
 
-**Reduces collateral.** Burning aTokens reduces your supply position, which may reduce your collateral. If the repayment would leave you with insufficient collateral for your remaining borrows, the transaction reverts --- the health factor check still applies. You cannot use this to put yourself into a liquidatable state.
+**Reduces collateral.** Burning aTokens reduces your supply position, which may reduce your collateral. If the repayment would leave you with insufficient collateral for your remaining borrows, the transaction reverts - the health factor check still applies. You cannot use this to put yourself into a liquidatable state.
 
-**No effect on pool liquidity.** Normal repayment adds liquidity to the pool (the underlying tokens flow back in). Repay-with-aTokens does not add liquidity --- it reduces both supply and debt by the same amount. This means the utilization rate may change differently than with a normal repay, which slightly affects interest rates.
+**No effect on pool liquidity.** Normal repayment adds liquidity to the pool (the underlying tokens flow back in). Repay-with-aTokens does not add liquidity - it reduces both supply and debt by the same amount. This means the utilization rate may change differently than with a normal repay, which slightly affects interest rates.
 
----
+-
 
 ## 4. The Economics of Risk Parameterization
 
@@ -215,7 +215,7 @@ Before looking at how these features compose, it is worth stepping back to consi
 
 ### The Listing Dilemma
 
-Every new asset listing is a trade-off between growth and risk. Listing an asset attracts new users and capital (more supply, more borrowing, more revenue). But every asset also introduces tail risk --- the chance of a black swan event (oracle manipulation, sudden liquidity collapse, smart contract exploit) that creates bad debt.
+Every new asset listing is a trade-off between growth and risk. Listing an asset attracts new users and capital (more supply, more borrowing, more revenue). But every asset also introduces tail risk - the chance of a black swan event (oracle manipulation, sudden liquidity collapse, smart contract exploit) that creates bad debt.
 
 Without caps and siloed borrowing, governance would face a binary choice: list the asset with full exposure (risky) or don't list it at all (missed revenue). With these features, governance can list assets on a spectrum:
 
@@ -226,13 +226,13 @@ Without caps and siloed borrowing, governance would face a binary choice: list t
 | Tier 3: Volatile | Low caps, possibly siloed, collateral-enabled with low LTV | CRV, MKR |
 | Tier 4: Exotic | Very low caps, siloed, isolated collateral, high reserve factor | New governance tokens |
 
-This tiered approach means Aave can list hundreds of assets --- generating revenue and attracting users from every corner of DeFi --- while containing the risk of each asset to a level governance is comfortable with.
+This tiered approach means Aave can list hundreds of assets - generating revenue and attracting users from every corner of DeFi - while containing the risk of each asset to a level governance is comfortable with.
 
 ### The Revenue Angle
 
 Risk parameters also interact with revenue. Higher reserve factors on risky assets mean the protocol earns more per dollar of borrowing from those assets. Higher liquidation protocol fees on volatile assets mean the protocol earns more during the market stress events that those assets are likely to trigger. The risk management system is simultaneously a revenue optimization system.
 
----
+-
 
 ## 5. How These Features Work Together
 
@@ -249,7 +249,7 @@ The three features in this chapter, combined with Isolation Mode (Chapter 10), E
 
 Each asset can be independently tuned: capped to limit exposure, siloed to prevent complex debt interactions, isolated to limit collateral risk, and grouped with similar assets in E-Mode for better capital efficiency. The result is a protocol flexible enough to list hundreds of assets while remaining robust against the tail risks of any individual one.
 
----
+-
 
 ## Summary
 

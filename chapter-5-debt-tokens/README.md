@@ -1,14 +1,14 @@
-# Chapter 5: Debt Tokens --- Tracking What You Owe
+# Chapter 5: Debt Tokens - Tracking What You Owe
 
-If aTokens are a receipt for what the protocol owes *you*, debt tokens are the opposite: they represent what *you* owe the protocol. When you borrow from Aave V3, you do not just receive tokens and a database entry. You receive debt tokens --- on-chain tokens that track your growing obligation.
+If aTokens are a receipt for what the protocol owes *you*, debt tokens are the opposite: they represent what *you* owe the protocol. When you borrow from Aave V3, you do not just receive tokens and a database entry. You receive debt tokens - on-chain tokens that track your growing obligation.
 
 This chapter covers what debt tokens represent economically, why they cannot be transferred, the difference between variable and stable debt, why stable rates are being phased out, and how borrow delegation works.
 
----
+-
 
 ## The Economic Idea: An IOU That Grows
 
-When you borrow 1,000 USDC from Aave at a variable rate, the protocol mints 1,000 variable debt tokens to your address. These tokens represent your debt. Just like aTokens, their `balanceOf()` changes over time --- but in this case, your balance goes **up** as interest accrues, reflecting a growing obligation rather than growing wealth.
+When you borrow 1,000 USDC from Aave at a variable rate, the protocol mints 1,000 variable debt tokens to your address. These tokens represent your debt. Just like aTokens, their `balanceOf()` changes over time - but in this case, your balance goes **up** as interest accrues, reflecting a growing obligation rather than growing wealth.
 
 | Day   | Your Debt Token Balance | What It Means                      |
 |-------|------------------------|------------------------------------|
@@ -28,11 +28,11 @@ Repay:   You return assets to the protocol → debt tokens are burned
 
 Debt tokens serve three practical purposes:
 
-1. **On-chain accounting** --- anyone can call `balanceOf()` to see exactly how much a user owes, including accrued interest, at any moment.
-2. **Off-chain indexing** --- Transfer events on mint and burn let subgraphs and block explorers track borrowing activity.
-3. **Integration surface** --- other contracts can read debt positions through a familiar ERC-20 interface.
+1. **On-chain accounting** - anyone can call `balanceOf()` to see exactly how much a user owes, including accrued interest, at any moment.
+2. **Off-chain indexing** - Transfer events on mint and burn let subgraphs and block explorers track borrowing activity.
+3. **Integration surface** - other contracts can read debt positions through a familiar ERC-20 interface.
 
----
+-
 
 ## Why Debt Tokens Are Non-Transferable
 
@@ -44,7 +44,7 @@ Imagine if debt tokens *were* transferable. A malicious user could:
 
 1. Deposit collateral (say, 2 ETH worth \$4,000)
 2. Borrow 2,000 USDC against it
-3. Transfer the 2,000 debt tokens to a random address --- a wallet with no collateral
+3. Transfer the 2,000 debt tokens to a random address - a wallet with no collateral
 4. Walk away with the 2,000 USDC, free and clear
 
 The recipient of the debt tokens has no collateral backing the position. No one can liquidate them effectively. The protocol is now holding 2 ETH of collateral against... nothing, while 2,000 USDC of debt is assigned to an empty wallet. The protocol is instantly insolvent.
@@ -53,9 +53,9 @@ The recipient of the debt tokens has no collateral backing the position. No one 
 
 By making debt tokens non-transferable, Aave ensures that the borrower who created the debt is always the one responsible for it. The collateral-to-debt linkage is preserved at all times. The only way to create debt is through the Pool contract, which enforces collateral requirements. The only way to remove debt is to repay it.
 
-The ERC-20 interface is still implemented (rather than using a custom interface) because `balanceOf()`, `totalSupply()`, and Transfer events are useful for reading and tracking. Only the mutation functions --- transfer, transferFrom, approve --- are blocked.
+The ERC-20 interface is still implemented (rather than using a custom interface) because `balanceOf()`, `totalSupply()`, and Transfer events are useful for reading and tracking. Only the mutation functions - transfer, transferFrom, approve - are blocked.
 
----
+-
 
 ## Variable Debt Tokens: The Standard Path
 
@@ -94,7 +94,7 @@ function balanceOf(address user) public view override returns (uint256) {
 }
 ```
 
-One technical difference from the supply side: the variable borrow index uses **compound interest** rather than linear interest. Borrow rates are typically higher than supply rates, so compounding matters more. Over a year at 5%, the difference between linear and compound is small, but over longer periods or at higher rates, compounding produces meaningfully larger debt --- which is the conservative (protocol-safe) choice.
+One technical difference from the supply side: the variable borrow index uses **compound interest** rather than linear interest. Borrow rates are typically higher than supply rates, so compounding matters more. Over a year at 5%, the difference between linear and compound is small, but over longer periods or at higher rates, compounding produces meaningfully larger debt - which is the conservative (protocol-safe) choice.
 
 ### Quick Reference
 
@@ -105,9 +105,9 @@ One technical difference from the supply side: the variable borrow index uses **
 | `totalSupply()`        | Total variable debt, all users   | Yes                  |
 | `scaledTotalSupply()`  | Raw total scaled debt            | No (only on borrow/repay) |
 
-The `totalSupply()` of the variable debt token, multiplied by the current index, gives the total variable debt across all borrowers. This is one of the most important numbers in the protocol --- it feeds directly into utilization calculations and interest rate determination.
+The `totalSupply()` of the variable debt token, multiplied by the current index, gives the total variable debt across all borrowers. This is one of the most important numbers in the protocol - it feeds directly into utilization calculations and interest rate determination.
 
----
+-
 
 ## Stable Debt Tokens: The Locked-Rate Alternative
 
@@ -115,7 +115,7 @@ While variable debt tokens share a single global index (like aTokens), stable de
 
 ### The Economic Idea
 
-Variable rates float with market conditions. If utilization spikes, your borrow rate could jump from 3% to 15% overnight. Some borrowers want predictability --- they would rather pay a known rate, even if it is somewhat higher, than face rate volatility.
+Variable rates float with market conditions. If utilization spikes, your borrow rate could jump from 3% to 15% overnight. Some borrowers want predictability - they would rather pay a known rate, even if it is somewhat higher, than face rate volatility.
 
 Stable borrowing in Aave attempts to provide this. When you borrow at the stable rate, you lock in the current stable rate. Your debt compounds at that fixed rate regardless of what happens to utilization or variable rates.
 
@@ -123,14 +123,14 @@ Stable borrowing in Aave attempts to provide this. When you borrow at the stable
 
 The key difference is in how `balanceOf()` works:
 
-- **Variable debt**: `scaledBalance × globalVariableBorrowIndex` --- everyone shares one index
-- **Stable debt**: `principal × (1 + userRate)^timeSinceLastUpdate` --- each user has their own rate and timestamp
+- **Variable debt**: `scaledBalance × globalVariableBorrowIndex` - everyone shares one index
+- **Stable debt**: `principal × (1 + userRate)^timeSinceLastUpdate` - each user has their own rate and timestamp
 
 Because each user can have a different rate, the contract stores the principal (not a scaled balance) and the user's personal rate. It then computes compound interest individually for each user when `balanceOf()` is called.
 
 ### The Average Stable Rate
 
-Since every stable borrower can have a different rate, the protocol must track a **weighted average stable rate** across all stable borrowers. This average feeds into the interest rate model --- the total interest generated by stable borrowers affects overall utilization and rate calculations.
+Since every stable borrower can have a different rate, the protocol must track a **weighted average stable rate** across all stable borrowers. This average feeds into the interest rate model - the total interest generated by stable borrowers affects overall utilization and rate calculations.
 
 When a new stable borrow occurs, the average is recalculated:
 
@@ -153,9 +153,9 @@ Aave addresses this with **rebalancing**. Anyone can call `rebalanceStableBorrow
 - The user's locked rate is significantly below the current stable rate, **or**
 - Utilization is extremely high and the protocol needs rates to adjust
 
-Rebalancing is a blunt instrument --- it removes the stability guarantee. In practice, the conditions for triggering a rebalance have been set conservatively, and most stable borrowers are not affected during normal market conditions.
+Rebalancing is a blunt instrument - it removes the stability guarantee. In practice, the conditions for triggering a rebalance have been set conservatively, and most stable borrowers are not affected during normal market conditions.
 
----
+-
 
 ## Why Stable Rates Are Being Deprecated
 
@@ -163,7 +163,7 @@ Despite the conceptual appeal of predictable borrowing costs, stable rates have 
 
 ### 1. Low Adoption
 
-Most borrowers choose variable rates because they are typically lower. The stable rate premium (often 1--3% above variable) has not justified the complexity for most users. On many Aave markets, stable debt represents less than 5% of total borrows.
+Most borrowers choose variable rates because they are typically lower. The stable rate premium (often 1-3% above variable) has not justified the complexity for most users. On many Aave markets, stable debt represents less than 5% of total borrows.
 
 ### 2. Gaming Risk
 
@@ -171,7 +171,7 @@ Sophisticated users found ways to exploit the rebalancing mechanism. By carefull
 
 ### 3. Complexity Cost
 
-Stable debt requires per-user rate storage, weighted average tracking, rate blending on additional borrows, and rebalancing logic. This adds gas cost to every interaction, code surface area for bugs, and cognitive overhead for auditors and integrators --- all for a feature used by a small minority of borrowers.
+Stable debt requires per-user rate storage, weighted average tracking, rate blending on additional borrows, and rebalancing logic. This adds gas cost to every interaction, code surface area for bugs, and cognitive overhead for auditors and integrators - all for a feature used by a small minority of borrowers.
 
 ### 4. Governance Attack Surface
 
@@ -183,7 +183,7 @@ Newer Aave V3 deployments on most chains have stable borrowing **disabled** at t
 
 Aave V4 does not include stable rate borrowing at all, confirming that the feature has been fully deprecated for future development.
 
----
+-
 
 ## Variable vs Stable: The Comparison
 
@@ -200,11 +200,11 @@ Aave V4 does not include stable rate borrowing at all, confirming that the featu
 
 For practical purposes, **variable debt is Aave's debt model**. Stable debt is legacy functionality.
 
----
+-
 
 ## Borrow Delegation: Letting Someone Else Borrow Against Your Collateral
 
-Both debt token types support **borrow delegation** --- a powerful primitive that allows one user to authorize another to borrow against the first user's collateral.
+Both debt token types support **borrow delegation** - a powerful primitive that allows one user to authorize another to borrow against the first user's collateral.
 
 ### How It Works
 
@@ -224,17 +224,17 @@ Delegation controls who can **create** debt. It does not transfer existing debt.
 
 - **Credit delegation**: Users with excess collateral can earn fees by delegating borrowing power, often in exchange for off-chain agreements.
 - **Protocol integrations**: Smart contracts can borrow on behalf of users in more complex strategies.
-- **Undercollateralized lending**: Combined with off-chain agreements (legal contracts, reputation systems), delegation enables lending where the borrower does not post collateral themselves --- the delegator's collateral covers it.
+- **Undercollateralized lending**: Combined with off-chain agreements (legal contracts, reputation systems), delegation enables lending where the borrower does not post collateral themselves - the delegator's collateral covers it.
 
 Delegation does not change the fundamental invariant: every unit of debt in Aave is backed by collateral. It just allows the collateral provider and the fund recipient to be different addresses.
 
----
+-
 
 ## Mint and Burn: The Mechanics (Brief)
 
 When a borrow happens, the Pool calls `VariableDebtToken.mint()`, which stores `borrowAmount / currentIndex` as scaled debt. When a repayment happens, the Pool calls `burn()`, which removes `repayAmount / currentIndex` in scaled terms.
 
-Both operations also compute a `balanceIncrease` --- the interest that accrued on the user's existing debt since their last interaction. This is emitted in events for off-chain tracking but does not require separate storage. The index handles it automatically.
+Both operations also compute a `balanceIncrease` - the interest that accrued on the user's existing debt since their last interaction. This is emitted in events for off-chain tracking but does not require separate storage. The index handles it automatically.
 
 Events use **actual** (non-scaled) amounts. A borrow of 1,000 USDC emits a Transfer event for 1,000 tokens, even though the stored scaled value might be 952.38. This keeps block explorers and indexers showing correct human-readable values.
 
@@ -246,13 +246,13 @@ $$totalVariableDebt = scaledTotalSupply \times variableBorrowIndex$$
 
 This number is central to everything:
 
-- **Utilization**: `totalDebt / (availableLiquidity + totalDebt)` --- which determines interest rates
+- **Utilization**: `totalDebt / (availableLiquidity + totalDebt)` - which determines interest rates
 - **Treasury accrual**: The growth in total debt between updates equals the interest generated by borrowers
 - **Solvency**: Total aToken claims (depositor money) must always be backed by underlying assets plus outstanding debt
 
 Every mint increases scaled total supply. Every burn decreases it. The index handles the interest math in between.
 
----
+-
 
 ## Summary
 
@@ -260,7 +260,7 @@ Debt tokens complete the dual-sided accounting of Aave V3. Where aTokens track w
 
 **Key takeaways:**
 
-- **Debt tokens are IOUs that grow.** Your debt token balance increases over time as interest accrues --- the same rebasing mechanism as aTokens, but on the liability side.
+- **Debt tokens are IOUs that grow.** Your debt token balance increases over time as interest accrues - the same rebasing mechanism as aTokens, but on the liability side.
 
 - **Debt tokens are non-transferable.** This is non-negotiable. If debt could be transferred, borrowers could dump obligations on empty wallets and walk away with borrowed funds. The collateral-to-debt linkage must be preserved.
 

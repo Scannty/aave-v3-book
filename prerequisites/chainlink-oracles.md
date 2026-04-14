@@ -4,7 +4,7 @@ Smart contracts cannot fetch data from the outside world. They can only read wha
 
 **Oracles** solve this problem by bringing off-chain data on-chain.
 
----
+-
 
 ## The Oracle Problem
 
@@ -14,9 +14,9 @@ Consider what happens when a user deposits 10 ETH as collateral and wants to bor
 2. Based on that value and the asset's Loan-to-Value ratio, how much can they borrow?
 3. Later, if ETH's price drops, is the position now undercollateralized?
 
-None of these questions can be answered without a reliable price feed. A naive approach --- like letting users submit their own prices --- would be trivially exploitable. The protocol needs a **trustworthy, decentralized source of price data**.
+None of these questions can be answered without a reliable price feed. A naive approach - like letting users submit their own prices - would be trivially exploitable. The protocol needs a **trustworthy, decentralized source of price data**.
 
----
+-
 
 ## How Chainlink Price Feeds Work
 
@@ -30,7 +30,7 @@ The key properties:
 
 Each price feed is deployed as its own contract on-chain. For example, the ETH/USD price feed on Ethereum mainnet lives at a specific address and can be queried by any contract.
 
----
+-
 
 ## The AggregatorV3Interface
 
@@ -70,7 +70,7 @@ interface AggregatorV3Interface {
 
 The function you will see most often is `latestRoundData()`, which returns the most recent price update.
 
----
+-
 
 ## Reading a Price Feed
 
@@ -102,7 +102,7 @@ contract PriceConsumer {
 
 The `answer` field contains the price. But there are two critical details you must handle correctly: **decimals** and **staleness**.
 
----
+-
 
 ## Price Decimals
 
@@ -125,11 +125,11 @@ uint8 feedDecimals = priceFeed.decimals();
 uint256 normalizedPrice = uint256(answer) * 10 ** (18 - feedDecimals);
 ```
 
----
+-
 
 ## Staleness Checks
 
-A price feed can go stale if Chainlink nodes stop updating it (due to network congestion, a black swan event, or feed deprecation). Using a stale price is dangerous --- it could lead to incorrect liquidations or allow borrowing against inflated collateral.
+A price feed can go stale if Chainlink nodes stop updating it (due to network congestion, a black swan event, or feed deprecation). Using a stale price is dangerous - it could lead to incorrect liquidations or allow borrowing against inflated collateral.
 
 A proper integration checks how recently the price was updated:
 
@@ -159,9 +159,9 @@ function getLatestPrice() public view returns (int256) {
 }
 ```
 
-The `updatedAt` timestamp tells you when the price was last refreshed. The `MAX_STALENESS` threshold depends on the feed's expected update frequency --- for a feed with a 1-hour heartbeat, you might set staleness to 3600 seconds plus some buffer.
+The `updatedAt` timestamp tells you when the price was last refreshed. The `MAX_STALENESS` threshold depends on the feed's expected update frequency - for a feed with a 1-hour heartbeat, you might set staleness to 3600 seconds plus some buffer.
 
----
+-
 
 ## Why Aave Needs Oracles
 
@@ -177,9 +177,9 @@ Your **health factor** is the ratio of your risk-adjusted collateral value to yo
 Liquidators monitor health factors. When a position becomes undercollateralized (health factor < 1.0), a liquidator can repay part of the debt and receive the collateral at a discount. Accurate, timely prices are essential to make this work correctly.
 
 ### E-Mode Price Correlation
-Aave V3's Efficiency Mode (E-Mode) allows higher LTV ratios for correlated assets (e.g., stablecoins or ETH derivatives). The oracle must confirm that these assets remain correlated --- if one depegs, the protocol needs to detect it.
+Aave V3's Efficiency Mode (E-Mode) allows higher LTV ratios for correlated assets (e.g., stablecoins or ETH derivatives). The oracle must confirm that these assets remain correlated - if one depegs, the protocol needs to detect it.
 
----
+-
 
 ## Aave's Oracle Implementation
 
@@ -192,7 +192,7 @@ Aave V3 wraps Chainlink feeds in its own `AaveOracle` contract. This provides:
 
 When you see `oracle.getAssetPrice(asset)` in the Aave codebase, it is ultimately reading from a Chainlink `AggregatorV3Interface` under the hood.
 
----
+-
 
 ## Summary
 

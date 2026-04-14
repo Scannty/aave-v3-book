@@ -4,7 +4,7 @@ Lending protocols allow users to borrow assets by depositing other assets as **c
 
 That mechanism is **liquidation**.
 
----
+-
 
 ## Overcollateralization: The Foundation
 
@@ -17,7 +17,7 @@ Example:
 
 If ETH's price drops, that buffer shrinks. If it drops enough, the collateral may no longer cover the debt. Overcollateralization gives the protocol a margin of safety, but it is not unlimited.
 
----
+-
 
 ## Loan-to-Value Ratio (LTV)
 
@@ -33,7 +33,7 @@ Each asset has its own LTV set by governance:
 | WBTC | 73% | Can borrow up to 73% of WBTC collateral value |
 | USDC | 77% | Can borrow up to 77% of USDC collateral value |
 
-A lower LTV means the protocol is more conservative about that asset --- it requires a bigger safety buffer. Volatile assets get lower LTVs.
+A lower LTV means the protocol is more conservative about that asset - it requires a bigger safety buffer. Volatile assets get lower LTVs.
 
 ### Example
 
@@ -44,7 +44,7 @@ $$\text{Maximum Borrow} = \$10{,}000 \times 0.80 = \$8{,}000$$
 
 They can borrow up to \$8,000 in any available asset.
 
----
+-
 
 ## Liquidation Threshold
 
@@ -58,11 +58,11 @@ The liquidation threshold is always **higher** than the LTV:
 | WBTC | 73% | 78% |
 | USDC | 77% | 80% |
 
-The gap between LTV and liquidation threshold gives borrowers a buffer zone. When you borrow at max LTV, you are not immediately at risk of liquidation --- the price has to move against you enough to cross the liquidation threshold.
+The gap between LTV and liquidation threshold gives borrowers a buffer zone. When you borrow at max LTV, you are not immediately at risk of liquidation - the price has to move against you enough to cross the liquidation threshold.
 
 <video src="animations/final/ltv_buffer.webm" controls autoplay loop muted playsinline style="width:100%;max-width:800px;border-radius:8px;margin:20px 0"></video>
 
----
+-
 
 ## Health Factor
 
@@ -94,7 +94,7 @@ $$\text{Collateral Value} = 5 \times \$1{,}700 = \$8{,}500$$
 
 $$\text{Risk-adjusted Collateral} = \$8{,}500 \times 0.825 = \$7{,}012.50$$
 
-$$\text{Debt Value} = \$7{,}000 \quad (\text{unchanged --- they borrowed stablecoins})$$
+$$\text{Debt Value} = \$7{,}000 \quad (\text{unchanged - they borrowed stablecoins})$$
 
 $$\text{Health Factor} = \frac{\$7{,}012.50}{\$7{,}000} = 1.0018$$
 
@@ -112,13 +112,13 @@ $$\text{Health Factor} = \frac{\$6{,}971.25}{\$7{,}000} = 0.9959$$
 
 Health factor is below 1.0. The position can now be liquidated.
 
----
+-
 
 ## Why Liquidations Exist
 
 Liquidations serve one purpose: **preventing bad debt**.
 
-Bad debt occurs when a borrower's debt exceeds their collateral value. At that point, the protocol (and by extension, its depositors) loses money. No rational borrower would repay a loan that exceeds their collateral --- they would simply walk away.
+Bad debt occurs when a borrower's debt exceeds their collateral value. At that point, the protocol (and by extension, its depositors) loses money. No rational borrower would repay a loan that exceeds their collateral - they would simply walk away.
 
 ```
 Scenario without liquidation:
@@ -132,7 +132,7 @@ Scenario without liquidation:
 
 Liquidations prevent this by closing risky positions **before** the collateral falls below the debt value. The overcollateralization buffer and the liquidation threshold ensure there is always some margin to work with.
 
----
+-
 
 ## How Liquidation Works
 
@@ -150,7 +150,7 @@ The **close factor** limits how much of a position can be liquidated in a single
 
 Why not 100%? Partial liquidation brings the health factor back above 1.0 without completely closing the user's position. The borrower retains some collateral and some debt. If the price continues to fall, another liquidation can occur.
 
----
+-
 
 ## Liquidation Bonus (Incentive)
 
@@ -182,7 +182,7 @@ $$\text{Liquidator Profit} = \$3{,}675 - \$3{,}500 = \$175 \quad (\text{before g
 
 The borrower loses \$3,675 worth of collateral to clear \$3,500 of debt. The extra \$175 is the liquidator's reward and the borrower's penalty.
 
----
+-
 
 ## The Liquidation Economy
 
@@ -190,9 +190,9 @@ In practice, liquidation is competitive. Multiple bots monitor the mempool and o
 
 - **Speed**: Positions are liquidated quickly, often within the same block they become liquidatable.
 - **MEV**: Liquidations are a major source of Maximal Extractable Value. Searchers use flashbots and priority gas auctions to win liquidation opportunities.
-- **Flash loans**: Liquidators often use flash loans to perform liquidations without upfront capital. They borrow the repayment amount, execute the liquidation, sell the received collateral, and repay the flash loan --- all in one transaction.
+- **Flash loans**: Liquidators often use flash loans to perform liquidations without upfront capital. They borrow the repayment amount, execute the liquidation, sell the received collateral, and repay the flash loan - all in one transaction.
 
----
+-
 
 ## What Happens After Liquidation
 
@@ -208,11 +208,11 @@ The health factor has been restored above 1.0. The borrower still has a position
 
 If the price continues dropping, the health factor may fall below 1.0 again, triggering another round of liquidation. In extreme cases, multiple successive liquidations can occur until the position is fully closed.
 
----
+-
 
 ## Edge Case: Bad Debt
 
-If the price drops so fast that liquidators cannot act in time (or if it is not profitable to liquidate), the protocol can accumulate **bad debt** --- positions where the debt exceeds the collateral.
+If the price drops so fast that liquidators cannot act in time (or if it is not profitable to liquidate), the protocol can accumulate **bad debt** - positions where the debt exceeds the collateral.
 
 Protocols handle this differently:
 - **Insurance funds / safety modules**: A reserve of tokens that can cover losses
@@ -221,7 +221,7 @@ Protocols handle this differently:
 
 Aave V3 uses its Safety Module (a staking mechanism where AAVE holders backstop the protocol) and governance processes to manage this risk.
 
----
+-
 
 ## Summary
 
@@ -233,6 +233,6 @@ Aave V3 uses its Safety Module (a staking mechanism where AAVE holders backstop 
 | Health Factor | Risk-adjusted collateral / total debt (< 1.0 = liquidatable) |
 | Close Factor | Maximum % of debt that can be liquidated at once |
 | Liquidation Bonus | Extra collateral given to liquidators as incentive |
-| Bad Debt | When debt exceeds collateral --- the scenario liquidations prevent |
+| Bad Debt | When debt exceeds collateral - the scenario liquidations prevent |
 
 These concepts are the foundation for Chapter 7 (Liquidations), where we examine Aave V3's specific liquidation implementation, including E-Mode liquidations, grace periods, and the exact on-chain mechanics of the `liquidationCall()` function.

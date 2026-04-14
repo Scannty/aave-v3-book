@@ -1,10 +1,10 @@
-# Chapter 4: aTokens --- Your Receipt for Lending
+# Chapter 4: aTokens - Your Receipt for Lending
 
-When you deposit money into a savings account, the bank gives you a statement showing your balance. In Aave V3, you get something better: an **aToken** --- a live, tradeable receipt that sits in your wallet and whose balance grows every second.
+When you deposit money into a savings account, the bank gives you a statement showing your balance. In Aave V3, you get something better: an **aToken** - a live, tradeable receipt that sits in your wallet and whose balance grows every second.
 
 aTokens are the core of the depositor experience. They answer a simple question: "How do I prove I deposited assets, and how do I see my interest?"
 
----
+-
 
 ## The Economic Idea: A Receipt That Earns Interest
 
@@ -12,11 +12,11 @@ When you supply 1,000 USDC to Aave, you receive 1,000 aUSDC. This aUSDC is a sta
 
 You do not need to claim anything. You do not need to stake, lock, or interact with the protocol. Your balance simply goes up, block by block, second by second.
 
-The key design choice: **1 aToken is always worth approximately 1 of the underlying asset.** If you hold 1,050 aUSDC, you can redeem it for 1,050 USDC. The quantity of tokens in your wallet changes to reflect interest --- not the price per token.
+The key design choice: **1 aToken is always worth approximately 1 of the underlying asset.** If you hold 1,050 aUSDC, you can redeem it for 1,050 USDC. The quantity of tokens in your wallet changes to reflect interest - not the price per token.
 
 This is what makes aTokens intuitive. You do not need to check an exchange rate or do mental math. Your wallet balance *is* your position value.
 
----
+-
 
 ## Rebasing: How Your Balance Grows Without Transfers
 
@@ -27,7 +27,7 @@ Most ERC-20 tokens have a fixed balance that only changes when someone sends you
 Alice deposits 1,000 USDC on January 1st. The USDC supply APY is 3.65% (about 0.01% per day for easy math).
 
 | Date       | Alice's aUSDC Balance | What Changed?                   |
-|------------|----------------------|----------------------------------|
+|----|--------|------------|
 | Jan 1      | 1,000.00             | Initial deposit                  |
 | Jan 2      | 1,000.10             | One day of interest              |
 | Jan 31     | 1,003.00             | 30 days of interest              |
@@ -41,13 +41,13 @@ This is the rebase: the token's supply and individual balances shift continuousl
 
 - **Cold wallets earn interest.** You can put aTokens on a hardware wallet, disconnect it for a year, and your balance will be higher when you check again.
 - **No gas to claim.** Unlike some yield protocols that require periodic "harvest" transactions, aToken interest accrues automatically.
-- **Real-time balances.** Integrators, dashboards, and wallets always see the current value --- there is no stale balance problem.
+- **Real-time balances.** Integrators, dashboards, and wallets always see the current value - there is no stale balance problem.
 
----
+-
 
 ## How It Works Under the Hood: Scaled Balances and the Liquidity Index
 
-The rebasing magic comes from a simple multiplication. Aave does not actually update every depositor's balance in storage each second --- that would be impossibly expensive. Instead, it uses two concepts from Chapter 3:
+The rebasing magic comes from a simple multiplication. Aave does not actually update every depositor's balance in storage each second - that would be impossibly expensive. Instead, it uses two concepts from Chapter 3:
 
 1. **Scaled balance**: What the contract actually stores for each user. This is your deposit divided by the liquidity index at the time you deposited.
 2. **Liquidity index**: A global number that starts at 1.0 and grows over time as borrowers pay interest.
@@ -67,7 +67,7 @@ $$scaledBalance = \frac{1{,}000}{1.05} = 952.38$$
 The contract stores 952.38 as Alice's scaled balance. Now time passes and the index grows:
 
 | Liquidity Index | Alice's balanceOf()            | Interest Earned |
-|----------------|-------------------------------|-----------------|
+|------|-----------|-------|
 | 1.05           | 952.38 × 1.05 = 1,000.00     | 0.00            |
 | 1.06           | 952.38 × 1.06 = 1,009.52     | 9.52            |
 | 1.08           | 952.38 × 1.08 = 1,028.57     | 28.57           |
@@ -83,7 +83,7 @@ function balanceOf(address user) public view override returns (uint256) {
 }
 ```
 
-`super.balanceOf(user)` returns the stored scaled balance. `getReserveNormalizedIncome` returns the current liquidity index, projected forward to this exact second. Multiply them, and you have the real balance. This is a `view` function --- reading it costs no gas.
+`super.balanceOf(user)` returns the stored scaled balance. `getReserveNormalizedIncome` returns the current liquidity index, projected forward to this exact second. Multiply them, and you have the real balance. This is a `view` function - reading it costs no gas.
 
 `totalSupply()` works the same way: it multiplies the total scaled supply by the index.
 
@@ -92,7 +92,7 @@ function balanceOf(address user) public view override returns (uint256) {
 For protocols that need the raw stored value (not the rebased one), aTokens expose:
 
 | Function                | What It Returns                        | Changes On...         |
-|------------------------|----------------------------------------|----------------------|
+|--------|--------------|--------|
 | `balanceOf(user)`      | Actual balance including interest      | Every second          |
 | `scaledBalanceOf(user)` | Raw stored balance (no index applied) | Deposit, withdraw, transfer only |
 | `totalSupply()`        | Total actual supply with interest      | Every second          |
@@ -100,15 +100,15 @@ For protocols that need the raw stored value (not the rebased one), aTokens expo
 
 If you are building a protocol that integrates aTokens, the scaled versions give you stable values for snapshots and accounting.
 
----
+-
 
 ## The Rebasing Trade-off
 
-The rebasing design makes aTokens intuitive for users --- your balance *is* your value, no exchange rate math needed. But it creates a subtlety for smart contract integrations: `balanceOf()` returns a different value between two calls even without any transfer. Any protocol integrating aTokens must account for this. Caching aToken balances is a common integration mistake.
+The rebasing design makes aTokens intuitive for users - your balance *is* your value, no exchange rate math needed. But it creates a subtlety for smart contract integrations: `balanceOf()` returns a different value between two calls even without any transfer. Any protocol integrating aTokens must account for this. Caching aToken balances is a common integration mistake.
 
-For this reason, Aave also exposes `scaledBalanceOf()` --- the raw stored balance that does not change between transactions. Integrators who need a stable reference point can use the scaled balance and apply the index themselves when needed.
+For this reason, Aave also exposes `scaledBalanceOf()` - the raw stored balance that does not change between transactions. Integrators who need a stable reference point can use the scaled balance and apply the index themselves when needed.
 
----
+-
 
 ## Treasury Revenue: How the Protocol Takes Its Cut
 
@@ -116,13 +116,13 @@ Aave is a protocol, not a charity. A portion of all interest paid by borrowers g
 
 ### The Reserve Factor
 
-Each asset in Aave has a **reserve factor** --- a governance-set percentage (typically 10--20%) that determines the protocol's share of borrower interest.
+Each asset in Aave has a **reserve factor** - a governance-set percentage (typically 10-20%) that determines the protocol's share of borrower interest.
 
 $$\text{Interest paid by borrowers in one day} = \$1{,}000{,}000 \times 5\% \times \frac{1}{365} = \$136.99$$
 
 $$\text{Treasury's share (20\% reserve factor)} = \$136.99 \times 20\% = \$27.40$$
 
-This \$27.40 is recorded as aTokens owed to the treasury. The treasury is economically equivalent to another depositor --- its aToken position also earns interest over time.
+This \$27.40 is recorded as aTokens owed to the treasury. The treasury is economically equivalent to another depositor - its aToken position also earns interest over time.
 
 ### Batch Minting for Gas Efficiency
 
@@ -134,7 +134,7 @@ This is purely a gas optimization. The economic effect is the same: the treasury
 
 The reserve factor directly affects supply APY. If borrowers pay 5% interest and the reserve factor is 20%, depositors effectively receive the interest generated on 80% of the borrower payments (before adjusting for utilization). Higher reserve factors mean more protocol revenue but lower yields for suppliers.
 
----
+-
 
 ## Minting and Burning: The Lifecycle of an aToken
 
@@ -146,7 +146,7 @@ When you deposit 1,000 USDC and the current liquidity index is 1.05:
 
 1. The protocol computes the scaled amount: `1,000 / 1.05 = 952.38`
 2. It mints 952.38 scaled aTokens to your address
-3. Your `balanceOf()` immediately returns `952.38 × 1.05 = 1,000` --- exactly what you deposited
+3. Your `balanceOf()` immediately returns `952.38 × 1.05 = 1,000` - exactly what you deposited
 4. If this is your first deposit of this asset, the protocol automatically enables it as collateral
 
 The return value from `mint()` tells the Pool whether this is a first-time deposit, which triggers the auto-collateral logic.
@@ -160,7 +160,7 @@ When you withdraw 1,000 USDC and the index has grown to 1.10:
 3. The aToken contract transfers 1,000 USDC to you
 4. If you withdrew everything, the protocol disables this asset as collateral
 
-The aToken contract itself holds all the underlying assets --- it is the vault. When you withdraw, the underlying tokens come directly from the aToken contract to you.
+The aToken contract itself holds all the underlying assets - it is the vault. When you withdraw, the underlying tokens come directly from the aToken contract to you.
 
 ### The Lifecycle Visualized
 
@@ -176,7 +176,7 @@ WITHDRAW: You request 1,047 USDC → Protocol burns ~952 scaled aTokens
           You receive 1,047 USDC in your wallet
 ```
 
----
+-
 
 ## Transfers and Composability
 
@@ -200,14 +200,14 @@ The protocol checks your health factor after the transfer. If it would drop belo
 
 Because aTokens are standard ERC-20s, they can be:
 
-- **Held in cold storage** --- still earns interest, no interaction needed
-- **Deposited into other protocols** --- use aTokens as collateral elsewhere
-- **Sent to multisigs or DAOs** --- treasury management with built-in yield
-- **Traded on DEXs** --- though rebasing complicates AMM accounting
+- **Held in cold storage** - still earns interest, no interaction needed
+- **Deposited into other protocols** - use aTokens as collateral elsewhere
+- **Sent to multisigs or DAOs** - treasury management with built-in yield
+- **Traded on DEXs** - though rebasing complicates AMM accounting
 
 The rebasing behavior does create friction with some DeFi protocols. AMMs that cache token balances (like simple x*y=k designs) will miscount aToken reserves over time. Any integration must call `balanceOf()` fresh rather than relying on cached values.
 
----
+-
 
 ## The Contract Hierarchy (Brief)
 
@@ -230,11 +230,11 @@ ERC20 (modified OpenZeppelin base)
 
 The `IncentivizedERC20` layer is worth noting: every mint, burn, and transfer notifies an external incentives controller. This is how Aave distributes liquidity mining rewards without modifying the core token logic.
 
----
+-
 
 ## Summary
 
-aTokens are the depositor's interface to Aave V3. They wrap complex scaled-balance accounting into an intuitive ERC-20 that "just works" --- your balance goes up, and you can transfer or redeem at any time.
+aTokens are the depositor's interface to Aave V3. They wrap complex scaled-balance accounting into an intuitive ERC-20 that "just works" - your balance goes up, and you can transfer or redeem at any time.
 
 **Key takeaways:**
 
@@ -244,9 +244,9 @@ aTokens are the depositor's interface to Aave V3. They wrap complex scaled-balan
 
 - **Under the hood, it is a single multiplication:** `actualBalance = scaledBalance × liquidityIndex`. The scaled balance is stored; the index grows globally.
 
-- **The rebasing design prioritizes user experience** --- your balance *is* your value. The trade-off is that integrating protocols must handle a changing `balanceOf()` between transactions.
+- **The rebasing design prioritizes user experience** - your balance *is* your value. The trade-off is that integrating protocols must handle a changing `balanceOf()` between transactions.
 
-- **The treasury earns revenue** by accumulating a share of borrower interest as aTokens. The reserve factor (typically 10--20%) determines the split.
+- **The treasury earns revenue** by accumulating a share of borrower interest as aTokens. The reserve factor (typically 10-20%) determines the split.
 
 - **Transfers include a health factor check.** You cannot send away aTokens that are backing active borrows, preventing collateral extraction.
 

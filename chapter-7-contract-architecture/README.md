@@ -2,11 +2,11 @@
 
 By now you understand how Aave works economically: interest rates balance supply and demand, indexes track interest accrual, aTokens and debt tokens represent positions, and the core operations tie it all together. This chapter looks under the hood at how the smart contracts are organized to make all of that work on-chain.
 
-This is the most Solidity-heavy chapter in the book. If you are here for the economics, you can skip it. If you want to understand how to read the codebase, integrate with it, or audit it --- this is where that knowledge lives.
+This is the most Solidity-heavy chapter in the book. If you are here for the economics, you can skip it. If you want to understand how to read the codebase, integrate with it, or audit it - this is where that knowledge lives.
 
 <video src="animations/final/architecture.webm" controls autoplay loop muted playsinline style="width:100%;max-width:800px;border-radius:8px;margin:20px 0"></video>
 
----
+-
 
 ## The Pool: A Thin Router
 
@@ -35,13 +35,13 @@ function supply(
 }
 ```
 
-The entire function body is a single call to `SupplyLogic`. The Pool passes its own storage references (`_reserves`, `_reservesList`, `_usersConfig`) to the library, which operates directly on the Pool's state. From the EVM's perspective, the library code runs in the Pool's context --- there is no external call or context switch.
+The entire function body is a single call to `SupplyLogic`. The Pool passes its own storage references (`_reserves`, `_reservesList`, `_usersConfig`) to the library, which operates directly on the Pool's state. From the EVM's perspective, the library code runs in the Pool's context - there is no external call or context switch.
 
 Why this design? Solidity imposes a **24KB size limit** on deployed contracts (EIP-170). A single contract containing all of Aave's logic would far exceed this. By extracting logic into libraries, the Pool stays small while the total system can be arbitrarily complex.
 
 The Pool is deployed behind an **upgradeable proxy**, so governance can update the implementation without changing the address or migrating state.
 
----
+-
 
 ## The Libraries: Where the Logic Lives
 
@@ -71,7 +71,7 @@ Within each library, the flow is also consistent:
 4. **Execute** (move tokens, mint/burn, update accounting)
 5. **Update interest rates** (recalculate based on new utilization)
 
----
+-
 
 ## The ReserveData Struct: Per-Asset State
 
@@ -97,11 +97,11 @@ struct ReserveData {
 }
 ```
 
-The types are deliberately sized --- `uint128` instead of `uint256`, `uint40` for timestamps, `uint16` for IDs --- so that multiple fields pack into a single 256-bit storage slot. This reduces the number of `SLOAD` operations when reading reserve data, which directly reduces gas costs.
+The types are deliberately sized - `uint128` instead of `uint256`, `uint40` for timestamps, `uint16` for IDs - so that multiple fields pack into a single 256-bit storage slot. This reduces the number of `SLOAD` operations when reading reserve data, which directly reduces gas costs.
 
 The `liquidityIndex` and `variableBorrowIndex` are the cumulative multipliers from Chapter 3. The `currentLiquidityRate` and `currentVariableBorrowRate` are the outputs of the interest rate model from Chapter 2. Everything connects.
 
----
+-
 
 ## The Configuration Bitmap: Packing Parameters Into One Slot
 
@@ -111,10 +111,10 @@ Aave packs all of these into a **single `uint256`**:
 
 | Bit Range | Parameter | Example |
 |-----------|-----------|---------|
-| 0--15 | LTV (basis points) | 8000 = 80% |
-| 16--31 | Liquidation threshold | 8250 = 82.5% |
-| 32--47 | Liquidation bonus | 10500 = 105% (5% bonus) |
-| 48--55 | Decimals | 6 for USDC, 18 for ETH |
+| 0-15 | LTV (basis points) | 8000 = 80% |
+| 16-31 | Liquidation threshold | 8250 = 82.5% |
+| 32-47 | Liquidation bonus | 10500 = 105% (5% bonus) |
+| 48-55 | Decimals | 6 for USDC, 18 for ETH |
 | 56 | Active flag | 1 = yes |
 | 57 | Frozen flag | 0 = no |
 | 58 | Borrowing enabled | 1 = yes |
@@ -123,11 +123,11 @@ Aave packs all of these into a **single `uint256`**:
 | 61 | Borrowable in isolation | 1 for stablecoins |
 | 62 | Siloed borrowing | 0 = no |
 | 63 | Flash loans enabled | 1 = yes |
-| 64--79 | Reserve factor | 1000 = 10% |
-| 80--115 | Borrow cap (whole tokens) | 50,000,000 |
-| 116--151 | Supply cap (whole tokens) | 100,000,000 |
-| 152--167 | Liquidation protocol fee | 1000 = 10% |
-| 168--175 | E-Mode category | 1 = stablecoins |
+| 64-79 | Reserve factor | 1000 = 10% |
+| 80-115 | Borrow cap (whole tokens) | 50,000,000 |
+| 116-151 | Supply cap (whole tokens) | 100,000,000 |
+| 152-167 | Liquidation protocol fee | 1000 = 10% |
+| 168-175 | E-Mode category | 1 = stablecoins |
 
 The `ReserveConfiguration` library provides getters and setters using bitmasks:
 
@@ -147,7 +147,7 @@ function getLiquidationThreshold(
 
 One storage read gives you every risk parameter for a reserve. This matters because these parameters are checked on every supply, borrow, repay, withdraw, and liquidation.
 
----
+-
 
 ## The User Configuration Bitmap
 
@@ -160,7 +160,7 @@ This means the protocol can scan a user's entire position by reading one 256-bit
 
 When computing the health factor, the protocol loops through these bits to find which reserves the user is involved with, then fetches only those reserves' data. This is much cheaper than iterating over all reserves.
 
----
+-
 
 ## The PoolConfigurator
 
@@ -176,7 +176,7 @@ When computing the health factor, the protocol loops through these bits to find 
 
 Every function checks the caller's role through `ACLManager` before executing. Ordinary users never interact with this contract.
 
----
+-
 
 ## The PoolAddressesProvider
 
@@ -192,7 +192,7 @@ Every function checks the caller's role through `ACLManager` before executing. O
 
 Other contracts look up addresses from this registry rather than hardcoding them. This enables upgradeability: to upgrade the Pool, governance deploys a new implementation and calls `setPoolImpl()` on the AddressesProvider, which updates the proxy to point to the new code. Same address, same storage, new logic.
 
----
+-
 
 ## The Oracle
 
@@ -206,7 +206,7 @@ function getAssetPrice(address asset) public view returns (uint256) {
 
 The oracle is called every time the protocol needs to value a position: on borrow (is there enough collateral?), on withdraw (would this break the health factor?), and on liquidation (is this position actually underwater?).
 
----
+-
 
 ## The ACL Manager
 
@@ -242,7 +242,7 @@ function _onlyPoolAdmin() internal view {
 
 This is covered in detail in the Governance chapter (Chapter 13).
 
----
+-
 
 ## Token Contracts Per Asset
 
@@ -256,19 +256,19 @@ For every listed asset, three token contracts are deployed:
 
 One critical difference: aTokens are **transferable** (you can send your supply position to someone else), but debt tokens are **non-transferable**. The `transfer()` function on debt tokens reverts. You cannot send your debt to another address.
 
----
+-
 
 ## Summary
 
 The mental model for Aave V3's architecture:
 
-- **Pool** --- the thin router that users call, delegating to libraries
-- **Libraries** --- where all the logic lives (SupplyLogic, BorrowLogic, etc.)
-- **ReserveData** --- per-asset state: indexes, rates, timestamps, token addresses
-- **Configuration bitmap** --- all risk parameters packed into one `uint256` for gas efficiency
-- **User bitmap** --- each user's borrow/collateral flags in one `uint256`
-- **PoolConfigurator** --- the admin panel, gated by ACLManager roles
-- **PoolAddressesProvider** --- the registry that makes everything discoverable and upgradeable
-- **AaveOracle** --- Chainlink price feeds wrapped in a uniform interface
+- **Pool** - the thin router that users call, delegating to libraries
+- **Libraries** - where all the logic lives (SupplyLogic, BorrowLogic, etc.)
+- **ReserveData** - per-asset state: indexes, rates, timestamps, token addresses
+- **Configuration bitmap** - all risk parameters packed into one `uint256` for gas efficiency
+- **User bitmap** - each user's borrow/collateral flags in one `uint256`
+- **PoolConfigurator** - the admin panel, gated by ACLManager roles
+- **PoolAddressesProvider** - the registry that makes everything discoverable and upgradeable
+- **AaveOracle** - Chainlink price feeds wrapped in a uniform interface
 
 Everything you learned in Chapters 2-6 about interest rates, indexes, tokens, and flows is implemented through this structure.
