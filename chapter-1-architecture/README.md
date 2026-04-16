@@ -8,7 +8,7 @@ Suppliers deposit assets into shared liquidity pools and earn interest. Borrower
 
 There is no credit check, no KYC, no approval process. Anyone with a wallet can participate. The rules are enforced entirely by smart contracts - code replaces the counterparty.
 
--
+---
 
 ## How It Works: The Five Core Operations
 
@@ -40,7 +40,7 @@ You can also repay with aTokens directly - if you have aUSDC and owe USDC, you c
 
 You redeem your aTokens for the underlying asset. If you have outstanding borrows, the protocol checks that your remaining collateral still covers your debt (your **health factor** stays above 1). If withdrawing would make your position unsafe, the transaction is rejected.
 
--
+---
 
 ## The Unified Pool
 
@@ -59,7 +59,7 @@ The trade-off: since all assets share one pool, risk from one asset can theoreti
 
 These features are covered in detail in later chapters.
 
--
+---
 
 ## The Economic Loop
 
@@ -87,7 +87,7 @@ Every piece of the protocol exists to make this loop work safely and efficiently
 
 The rest of this book unpacks each of these components in detail, starting with the interest rate model - the mechanism that keeps the two-sided market in balance.
 
--
+---
 
 ## What Makes V3 Different
 
@@ -103,7 +103,7 @@ Aave V3 was not just a code update from V2. It introduced several features that 
 
 **GHO** - Aave's native stablecoin. Unlike regular borrowing (where you take existing assets from the pool), GHO is minted fresh when you borrow and burned when you repay. All GHO interest goes directly to the Aave treasury.
 
--
+---
 
 ## How to Read This Book
 

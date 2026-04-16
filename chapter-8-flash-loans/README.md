@@ -1,4 +1,4 @@
-# Chapter 8: Flash Loans
+# Chapter 9: Flash Loans
 
 Imagine walking into a bank and saying: "Lend me \$100 million. No collateral. No credit check. I will return it in 12 seconds." In traditional finance, you would be escorted out. In DeFi, this happens thousands of times a day. It is called a **flash loan**, and Aave pioneered it.
 
@@ -6,7 +6,7 @@ The concept is simple: borrow any amount of any asset, with zero collateral, as 
 
 This is not a loophole or a hack. It is a fundamental consequence of how blockchains work, and it unlocks financial operations that are impossible in any other system.
 
--
+---
 
 ## 1. Why Flash Loans Are Possible
 
@@ -23,7 +23,7 @@ This means flash loans carry **zero risk to the protocol**:
 - **No duration risk**: There is no time window for default.
 - **Positive economics**: The protocol earns a fee on every successful flash loan.
 
--
+---
 
 ## 2. The Fee Structure
 
@@ -46,7 +46,7 @@ The exact split is configurable. If the total premium is 5 bps and the protocol'
 
 The amount you can borrow is limited only by the available liquidity in a reserve. If there is \$500M of USDC deposited and not currently lent out, you can flash loan up to \$500M.
 
--
+---
 
 ## 3. Use Cases: What You Can Do with Unlimited Capital
 
@@ -116,7 +116,7 @@ Build a leveraged long ETH position in a single transaction:
 
 Without flash loans, you would need to loop supply-borrow-swap-supply many times, each iteration adding a little more leverage. Flash loans collapse this into one transaction.
 
--
+---
 
 ## 4. Two Flash Loan Functions
 
@@ -140,7 +140,7 @@ Borrow multiple assets in a single call. Supports debt modes (see below). Higher
 
 **Rule of thumb:** Use `flashLoanSimple` when borrowing a single asset with intent to repay. Use `flashLoan` when borrowing multiple assets or when you want to keep the borrowed funds as debt.
 
--
+---
 
 ## 5. The Receiver Contract
 
@@ -187,7 +187,7 @@ Here is what happens inside the protocol when you call `flashLoanSimple`:
 
 The critical invariant: the `safeTransferFrom` at the end. If your contract cannot repay, the transfer fails, the transaction reverts, and the funds never left. This is the mechanism that makes flash loans risk-free for the protocol.
 
--
+---
 
 ## 6. Flash Loan Modes: Borrow Without Repaying
 
@@ -228,7 +228,7 @@ The classic looping strategy with Mode 2:
 
 You can even mix modes in a single call. Flash loan ETH (Mode 0, must repay) and USDC (Mode 2, keep as debt) in the same transaction. Each asset follows its own rules.
 
--
+---
 
 ## 7. Security: Why This Is Safe
 
@@ -242,7 +242,7 @@ Flash loans sound dangerous, but they are among the safest features in the proto
 
 The one caveat: flash loans can be used as **tools** in attacks on other protocols. A flash loan from Aave can provide capital for price manipulation on a vulnerable DEX or governance attack on a poorly designed DAO. But this is not a risk to Aave - the funds always return. The risk lies with protocols that do not account for the existence of flash loans in their security models.
 
--
+---
 
 ## Key Takeaways
 

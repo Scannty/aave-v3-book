@@ -4,7 +4,7 @@ If aTokens are a receipt for what the protocol owes *you*, debt tokens are the o
 
 This chapter covers what debt tokens represent economically, why they cannot be transferred, the difference between variable and stable debt, why stable rates are being phased out, and how borrow delegation works.
 
--
+---
 
 ## The Economic Idea: An IOU That Grows
 
@@ -32,7 +32,7 @@ Debt tokens serve three practical purposes:
 2. **Off-chain indexing** - Transfer events on mint and burn let subgraphs and block explorers track borrowing activity.
 3. **Integration surface** - other contracts can read debt positions through a familiar ERC-20 interface.
 
--
+---
 
 ## Why Debt Tokens Are Non-Transferable
 
@@ -55,7 +55,7 @@ By making debt tokens non-transferable, Aave ensures that the borrower who creat
 
 The ERC-20 interface is still implemented (rather than using a custom interface) because `balanceOf()`, `totalSupply()`, and Transfer events are useful for reading and tracking. Only the mutation functions - transfer, transferFrom, approve - are blocked.
 
--
+---
 
 ## Variable Debt Tokens: The Standard Path
 
@@ -107,7 +107,7 @@ One technical difference from the supply side: the variable borrow index uses **
 
 The `totalSupply()` of the variable debt token, multiplied by the current index, gives the total variable debt across all borrowers. This is one of the most important numbers in the protocol - it feeds directly into utilization calculations and interest rate determination.
 
--
+---
 
 ## Stable Debt Tokens: The Locked-Rate Alternative
 
@@ -155,7 +155,7 @@ Aave addresses this with **rebalancing**. Anyone can call `rebalanceStableBorrow
 
 Rebalancing is a blunt instrument - it removes the stability guarantee. In practice, the conditions for triggering a rebalance have been set conservatively, and most stable borrowers are not affected during normal market conditions.
 
--
+---
 
 ## Why Stable Rates Are Being Deprecated
 
@@ -183,7 +183,7 @@ Newer Aave V3 deployments on most chains have stable borrowing **disabled** at t
 
 Aave V4 does not include stable rate borrowing at all, confirming that the feature has been fully deprecated for future development.
 
--
+---
 
 ## Variable vs Stable: The Comparison
 
@@ -200,7 +200,7 @@ Aave V4 does not include stable rate borrowing at all, confirming that the featu
 
 For practical purposes, **variable debt is Aave's debt model**. Stable debt is legacy functionality.
 
--
+---
 
 ## Borrow Delegation: Letting Someone Else Borrow Against Your Collateral
 
@@ -228,7 +228,7 @@ Delegation controls who can **create** debt. It does not transfer existing debt.
 
 Delegation does not change the fundamental invariant: every unit of debt in Aave is backed by collateral. It just allows the collateral provider and the fund recipient to be different addresses.
 
--
+---
 
 ## Mint and Burn: The Mechanics (Brief)
 
@@ -252,7 +252,7 @@ This number is central to everything:
 
 Every mint increases scaled total supply. Every burn decreases it. The index handles the interest math in between.
 
--
+---
 
 ## Summary
 

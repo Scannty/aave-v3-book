@@ -1,4 +1,4 @@
-# Chapter 14: L2 Deployments, PriceOracleSentinel, and GHO
+# Chapter 15: L2 Deployments, PriceOracleSentinel, and GHO
 
 Aave V3 is not a single deployment on Ethereum mainnet. It runs on Arbitrum, Optimism, Polygon, Avalanche, Base, and a growing list of other chains. The same contracts - Pool, AToken, VariableDebtToken, all the logic libraries - are deployed on each chain with chain-specific parameters. From a user's perspective, borrowing ETH on Arbitrum looks identical to borrowing ETH on mainnet.
 
@@ -6,7 +6,7 @@ But L2 chains introduce a risk that does not exist on L1: **sequencer downtime**
 
 This chapter covers both - the sequencer risk problem and its solution, and GHO as an economic primitive that fundamentally changes how Aave generates revenue.
 
--
+---
 
 ## 1. The Sequencer Problem: Why L2s Need Special Protection
 
@@ -29,7 +29,7 @@ The borrowers liquidated at 4:00:01 PM did nothing wrong. They may have had ampl
 
 On Ethereum mainnet, if ETH drops from \$2,000 to \$1,700, users can react in real time. They can submit transactions to add collateral, repay debt, or close positions. The price decline and the ability to respond happen on the same chain at the same time. On an L2 with a down sequencer, the price decline happens externally while users are locked out locally.
 
--
+---
 
 ## 2. PriceOracleSentinel: The Grace Period Mechanism
 
@@ -78,7 +78,7 @@ The grace period is set by governance, typically to 3,600 seconds (1 hour). This
 
 On Ethereum mainnet, the PriceOracleSentinel is not configured - the sentinel address is set to zero, and all sentinel checks are skipped entirely. Sequencer risk does not exist on L1, so the protection is unnecessary. The sentinel only activates on L2 deployments where sequencer dependency creates the risk.
 
--
+---
 
 ## 3. GHO: Aave's Native Stablecoin
 
@@ -201,7 +201,7 @@ The key difference is in the token flow. When the Pool processes a GHO "borrow,"
 
 GHO launched on Ethereum mainnet and is expanding to additional chains. Cross-chain GHO involves bridge mechanisms and additional Facilitators on destination chains. A Facilitator on Arbitrum, for example, could mint GHO backed by collateral in the Arbitrum Aave pool, while a separate Facilitator on Ethereum handles mainnet minting. Each has its own bucket capacity, maintaining the risk containment model.
 
--
+---
 
 ## 4. Multi-Chain Governance: Ethereum Controls Everything
 
@@ -209,7 +209,7 @@ Aave governance lives on Ethereum mainnet. All proposals - parameter changes, as
 
 ### The Cross-Chain Execution Flow
 
-1. A governance proposal passes on Ethereum through the standard process (Chapter 12): discussion, vote, timelock
+1. A governance proposal passes on Ethereum through the standard process (Chapter 14): discussion, vote, timelock
 2. The execution payload includes a cross-chain message routed through the native L1-to-L2 bridge for the target chain
 3. A CrossChainForwarder on Ethereum sends the encoded payload to the target chain
 4. A CrossChainExecutor on the L2 receives and executes the payload, applying the governance decision to the local Pool
@@ -227,7 +227,7 @@ While governance is centralized on Ethereum, each chain deployment has independe
 
 Governance tailors parameters per chain to reflect these realities, rather than applying a one-size-fits-all configuration.
 
--
+---
 
 ## 5. Putting It Together: Aave's Evolution Beyond a Lending Pool
 
@@ -239,7 +239,7 @@ The two major themes of this chapter - sequencer risk protection and GHO - repre
 
 Both features share a design philosophy that runs through all of Aave V3: **solve the problem at the right layer of abstraction**. The sentinel does not change liquidation logic - it adds a precondition. GHO does not change collateral or health factor logic - it changes where borrowed tokens come from. The core protocol remains the same.
 
--
+---
 
 ## Summary
 

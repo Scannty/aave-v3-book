@@ -4,7 +4,7 @@ Before diving into the internals of Aave V3, you should be comfortable with seve
 
 You do not need to be an expert in any of these topics. The goal here is to give you enough understanding so that when these concepts appear in later chapters, you can follow the reasoning without getting stuck.
 
--
+---
 
 ## What You Should Know Before Reading This Book
 
@@ -20,11 +20,7 @@ Aave needs to know the real-time price of every asset in the protocol. It relies
 
 Aave V3's core contracts (Pool, PoolConfigurator, and others) are deployed behind **upgradeable proxies**. This means the protocol can fix bugs and add features without migrating all user positions to new contracts. Understanding `delegatecall`, storage layout, and the difference between Transparent Proxy and UUPS patterns will help you read Aave's deployment and upgrade code.
 
-### 4. [DeFi Liquidations and Collateral](defi-liquidations.md)
-
-Lending protocols must handle the case where a borrower's collateral drops in value. Aave V3 uses **health factors**, **LTV ratios**, and **liquidation thresholds** to decide when a position is unsafe, and it incentivizes external **liquidators** to close those positions. This prerequisite covers the general mechanics so you can focus on Aave's specific implementation in Chapter 7.
-
--
+---
 
 ## How to Use This Section
 
@@ -32,7 +28,7 @@ If you are already familiar with these topics, feel free to skip ahead to [Chapt
 
 If you are newer to DeFi development, read through each prerequisite in order. They build on each other loosely - ERC-20 knowledge helps with understanding aTokens, oracle knowledge helps with liquidations, and so on.
 
--
+---
 
 ## What This Section Does NOT Cover
 

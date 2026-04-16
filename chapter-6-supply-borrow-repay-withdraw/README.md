@@ -11,7 +11,7 @@ Every operation in Aave V3 follows the same rhythm:
 
 Understanding this rhythm is more important than understanding any individual line of code.
 
--
+---
 
 ## The Lifecycle of a Lending Position
 
@@ -27,7 +27,7 @@ Before diving into each operation, here is the big picture. A typical user journ
 
 Each step changes the protocol's supply-demand balance, which in turn moves interest rates for everyone. When you supply, you add liquidity and push rates down. When you borrow, you remove liquidity and push rates up. The protocol continuously adjusts to find equilibrium.
 
--
+---
 
 ## Supply: Depositing Assets into the Pool
 
@@ -102,7 +102,7 @@ You supply 10,000 USDC. The current liquidity index is 1.03. The supply cap is 1
 - Your `balanceOf()`: 9,708.74 × 1.03 = 10,000.00 aUSDC
 - After one year at 3% APY: 9,708.74 × 1.0609 = 10,300.00 aUSDC
 
--
+---
 
 ## Borrow: Taking a Loan Against Your Collateral
 
@@ -200,7 +200,7 @@ Aave V3 introduced **isolation mode** for newly listed or riskier assets. When a
 
 The borrow flow checks isolation mode constraints and tracks the isolated asset's total debt against its ceiling.
 
--
+---
 
 ## Repay: Returning What You Borrowed
 
@@ -267,7 +267,7 @@ Aave V3 offers a neat shortcut: **repay using your aTokens** instead of holding 
 
 In this flow, the protocol burns aTokens from the repayer instead of pulling underlying tokens. The debt tokens are burned as usual. It is equivalent to withdrawing and then repaying in a single atomic step, saving gas and complexity.
 
--
+---
 
 ## Withdraw: Redeeming Your Deposit
 
@@ -325,7 +325,7 @@ function validateWithdraw(DataTypes.ReserveCache memory reserveCache, uint256 am
 
 **Step 7: Validate health factor.** If the user has any active borrows, the protocol computes the health factor after the withdrawal. If it would be at or below 1.0, the entire transaction reverts. This check happens *after* the burn, not before, so the protocol validates the final state.
 
--
+---
 
 ## The "Update State Then Update Rates" Pattern
 
@@ -384,7 +384,7 @@ If no one interacts with a reserve for hours or days, no problem. The first inte
 
 4. **Simple for integrators.** A single call to `supply()`, `borrow()`, `repay()`, or `withdraw()` handles all internal bookkeeping. External protocols do not need to call `updateState()` separately.
 
--
+---
 
 ## What the Protocol Prevents: A Summary of Safety Checks
 
@@ -405,7 +405,7 @@ Across all four operations, the protocol enforces these invariants:
 
 These checks make Aave a **permissionless but safe** protocol. Anyone can supply, borrow, repay, or withdraw at any time, but the protocol will never allow an action that would compromise its solvency.
 
--
+---
 
 ## Summary
 

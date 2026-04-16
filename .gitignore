@@ -1,6 +1,6 @@
 manim-env/
 venv/
-animations/videos/
+animations/media/
 __pycache__/
 *.pyc
 .DS_Store

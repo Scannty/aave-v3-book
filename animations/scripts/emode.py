@@ -101,8 +101,11 @@ class EModeBarChart(Scene):
         pct_labels = VGroup()
 
         bar_width = 0.8
-        max_height = 4.5
+        max_height = 3.8
         spacing = 1.3
+        base_y = -1.9  # bar baseline — moved up from -2.5 so the two-line x
+                       # labels do not collide with the annotation at the
+                       # bottom edge.
 
         start_x = -3.5
 
@@ -117,7 +120,7 @@ class EModeBarChart(Scene):
                 fill_opacity=0.7,
                 stroke_color=color,
             )
-            bar.move_to(np.array([x, -2.5 + height / 2, 0]))
+            bar.move_to(np.array([x, base_y + height / 2, 0]))
 
             label = Text(name, font_size=16, color=GREY_B).next_to(bar, DOWN, buff=0.15)
             pct = Text(f"{ltv*100:.0f}%", font_size=20, color=WHITE, weight=BOLD).next_to(bar, UP, buff=0.1)

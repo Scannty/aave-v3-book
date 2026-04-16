@@ -4,7 +4,7 @@ When you deposit money into a savings account, the bank gives you a statement sh
 
 aTokens are the core of the depositor experience. They answer a simple question: "How do I prove I deposited assets, and how do I see my interest?"
 
--
+---
 
 ## The Economic Idea: A Receipt That Earns Interest
 
@@ -16,7 +16,7 @@ The key design choice: **1 aToken is always worth approximately 1 of the underly
 
 This is what makes aTokens intuitive. You do not need to check an exchange rate or do mental math. Your wallet balance *is* your position value.
 
--
+---
 
 ## Rebasing: How Your Balance Grows Without Transfers
 
@@ -43,7 +43,7 @@ This is the rebase: the token's supply and individual balances shift continuousl
 - **No gas to claim.** Unlike some yield protocols that require periodic "harvest" transactions, aToken interest accrues automatically.
 - **Real-time balances.** Integrators, dashboards, and wallets always see the current value - there is no stale balance problem.
 
--
+---
 
 ## How It Works Under the Hood: Scaled Balances and the Liquidity Index
 
@@ -100,7 +100,7 @@ For protocols that need the raw stored value (not the rebased one), aTokens expo
 
 If you are building a protocol that integrates aTokens, the scaled versions give you stable values for snapshots and accounting.
 
--
+---
 
 ## The Rebasing Trade-off
 
@@ -108,7 +108,7 @@ The rebasing design makes aTokens intuitive for users - your balance *is* your v
 
 For this reason, Aave also exposes `scaledBalanceOf()` - the raw stored balance that does not change between transactions. Integrators who need a stable reference point can use the scaled balance and apply the index themselves when needed.
 
--
+---
 
 ## Treasury Revenue: How the Protocol Takes Its Cut
 
@@ -134,7 +134,7 @@ This is purely a gas optimization. The economic effect is the same: the treasury
 
 The reserve factor directly affects supply APY. If borrowers pay 5% interest and the reserve factor is 20%, depositors effectively receive the interest generated on 80% of the borrower payments (before adjusting for utilization). Higher reserve factors mean more protocol revenue but lower yields for suppliers.
 
--
+---
 
 ## Minting and Burning: The Lifecycle of an aToken
 
@@ -176,7 +176,7 @@ WITHDRAW: You request 1,047 USDC → Protocol burns ~952 scaled aTokens
           You receive 1,047 USDC in your wallet
 ```
 
--
+---
 
 ## Transfers and Composability
 
@@ -207,7 +207,7 @@ Because aTokens are standard ERC-20s, they can be:
 
 The rebasing behavior does create friction with some DeFi protocols. AMMs that cache token balances (like simple x*y=k designs) will miscount aToken reserves over time. Any integration must call `balanceOf()` fresh rather than relying on cached values.
 
--
+---
 
 ## The Contract Hierarchy (Brief)
 
@@ -230,7 +230,7 @@ ERC20 (modified OpenZeppelin base)
 
 The `IncentivizedERC20` layer is worth noting: every mint, burn, and transfer notifies an external incentives controller. This is how Aave distributes liquidity mining rewards without modifying the core token logic.
 
--
+---
 
 ## Summary
 

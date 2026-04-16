@@ -7,7 +7,6 @@
 * [Prerequisites Overview](prerequisites/README.md)
   * [Chainlink Price Feeds](prerequisites/chainlink-oracles.md)
   * [Proxy Patterns and Upgradeability](prerequisites/proxy-patterns.md)
-  * [DeFi Liquidations and Collateral](prerequisites/defi-liquidations.md)
   * [ERC-20 and Rebasing Tokens](prerequisites/erc20-token-standards.md)
 
 ## Core Protocol
@@ -28,8 +27,8 @@
 * [Chapter 11: Isolation Mode](chapter-10-isolation-mode/README.md)
 * [Chapter 12: Caps, Siloed Borrowing, and Repay with aTokens](chapter-13-risk-features/README.md)
 
-## Protocol Economics and Governance
+## Protocol Economics and Governance — *coming soon*
 
-* [Chapter 13: Reserves, Treasury, and Protocol Revenue](chapter-11-reserves-and-treasury/README.md)
-* [Chapter 14: Governance and Admin Controls](chapter-12-governance/README.md)
-* [Chapter 15: L2 Deployments, PriceOracleSentinel, and GHO](chapter-14-l2-and-gho/README.md)
+* Chapter 13: Reserves, Treasury, and Protocol Revenue
+* Chapter 14: Governance and Admin Controls
+* Chapter 15: L2 Deployments, PriceOracleSentinel, and GHO

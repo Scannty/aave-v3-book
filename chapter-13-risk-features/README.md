@@ -1,10 +1,10 @@
-# Chapter 13: Additional Risk Features
+# Chapter 12: Additional Risk Features
 
 Aave V3 lists hundreds of assets across multiple chains. Each asset carries its own risk profile - different liquidity depths, different volatility characteristics, different market microstructures. Listing an asset without guardrails would expose the entire protocol to the tail risk of any single token. This chapter covers three features that let governance fine-tune risk at the individual asset level: supply and borrow caps, siloed borrowing, and repay with aTokens.
 
-These features are small in scope but significant in practice. Caps prevent concentration risk. Siloed borrowing isolates exotic assets from the rest of the debt portfolio. And repay-with-aTokens provides an efficient mechanism for users to unwind positions. Together with Isolation Mode (Chapter 10) and E-Mode (Chapter 9), they form the complete toolkit that lets Aave list aggressively while managing risk conservatively.
+These features are small in scope but significant in practice. Caps prevent concentration risk. Siloed borrowing isolates exotic assets from the rest of the debt portfolio. And repay-with-aTokens provides an efficient mechanism for users to unwind positions. Together with Isolation Mode (Chapter 11) and E-Mode (Chapter 10), they form the complete toolkit that lets Aave list aggressively while managing risk conservatively.
 
--
+---
 
 ## 1. Supply and Borrow Caps: Limiting Protocol Exposure
 
@@ -65,7 +65,7 @@ Suppose the ETH borrow cap is set to 500,000 ETH. Currently, 495,000 ETH is borr
 - Interest accrues, pushing total debt to 500,200 ETH: **no problem** (organic growth is allowed)
 - Carol tries to borrow 1 ETH: **reverts** (total is already above cap)
 
--
+---
 
 ## 2. Siloed Borrowing: Quarantining Risky Debt
 
@@ -81,6 +81,28 @@ The restriction works in both directions:
 1. If you already have any borrows and try to borrow a siloed asset - the transaction reverts.
 2. If you already have a siloed borrow and try to borrow anything else (siloed or not) - the transaction reverts.
 3. If you already have a siloed borrow, you can borrow **more of the same** siloed asset - that is allowed.
+
+Both directions are enforced by the same validation block at borrow time:
+
+```solidity
+// ValidationLogic.validateBorrow
+(bool siloedBorrowingEnabled, address siloedBorrowingAddress) = userConfig
+    .getSiloedBorrowingState(reservesData, reservesList);
+
+if (siloedBorrowingEnabled) {
+    // User already has a siloed borrow — the new borrow must be the same asset.
+    require(
+        siloedBorrowingAddress == params.asset,
+        Errors.SILOED_BORROWING_VIOLATION
+    );
+} else {
+    // User has other borrows — the new asset must not be siloed.
+    require(
+        !params.isSiloedBorrowingEnabled || !userConfig.isBorrowingAny(),
+        Errors.SILOED_BORROWING_VIOLATION
+    );
+}
+```
 
 Your collateral is not affected. You can use any combination of collateral assets. Siloed borrowing only restricts the debt side of your position.
 
@@ -138,7 +160,7 @@ Governance typically applies siloed borrowing to assets with one or more of thes
 
 GHO itself is a notable example - it is siloed because its minting/burning mechanics differ from pool-based borrowing, and mixing GHO debt with regular pool debt in the same position would complicate the risk model.
 
--
+---
 
 ## 3. Repay with aTokens: Unwinding Positions Efficiently
 
@@ -168,6 +190,31 @@ No tokens leave the protocol. No ERC-20 transfers of the underlying asset occur.
 ### Why No Tokens Need to Move
 
 The underlying USDC was already sitting in the aToken contract. Your aUSDC represented a claim on that USDC. Your debt represented an obligation to return USDC. By burning both simultaneously, the claim and the obligation cancel out. The USDC stays in the pool, available for other borrowers.
+
+You can see the accounting shortcut directly in `BorrowLogic.executeRepay`. The two branches diverge only on whether the underlying moves:
+
+```solidity
+if (params.useATokens) {
+    // repayWithATokens: burn the caller's aTokens straight into the aToken
+    // contract. No ERC-20 transfer of the underlying happens — the claim
+    // (aToken) and the obligation (debt) cancel atomically.
+    IAToken(reserveCache.aTokenAddress).burn(
+        msg.sender,
+        reserveCache.aTokenAddress,
+        paybackAmount,
+        reserveCache.nextLiquidityIndex
+    );
+} else {
+    // Normal repay: caller sends underlying into the aToken contract.
+    IERC20(params.asset).safeTransferFrom(
+        msg.sender,
+        reserveCache.aTokenAddress,
+        paybackAmount
+    );
+}
+```
+
+The debt burn happens immediately before this block in both paths, so the only difference is the aToken burn replacing the ERC-20 transfer. Same net effect on the caller's position, one fewer transaction, no underlying tokens leaving the pool.
 
 ### When This Is Especially Useful
 
@@ -207,7 +254,7 @@ The net position is identical. But the debt is gone and the user's position is s
 
 **No effect on pool liquidity.** Normal repayment adds liquidity to the pool (the underlying tokens flow back in). Repay-with-aTokens does not add liquidity - it reduces both supply and debt by the same amount. This means the utilization rate may change differently than with a normal repay, which slightly affects interest rates.
 
--
+---
 
 ## 4. The Economics of Risk Parameterization
 
@@ -232,11 +279,11 @@ This tiered approach means Aave can list hundreds of assets - generating revenue
 
 Risk parameters also interact with revenue. Higher reserve factors on risky assets mean the protocol earns more per dollar of borrowing from those assets. Higher liquidation protocol fees on volatile assets mean the protocol earns more during the market stress events that those assets are likely to trigger. The risk management system is simultaneously a revenue optimization system.
 
--
+---
 
 ## 5. How These Features Work Together
 
-The three features in this chapter, combined with Isolation Mode (Chapter 10), E-Mode (Chapter 9), and the liquidation mechanism (Chapter 7), give governance a complete toolkit for managing risk at the individual asset level:
+The three features in this chapter, combined with Isolation Mode (Chapter 11), E-Mode (Chapter 10), and the liquidation mechanism (Chapter 8), give governance a complete toolkit for managing risk at the individual asset level:
 
 | Risk Concern | Feature | How It Helps |
 |---|---|---|
@@ -249,7 +296,7 @@ The three features in this chapter, combined with Isolation Mode (Chapter 10), E
 
 Each asset can be independently tuned: capped to limit exposure, siloed to prevent complex debt interactions, isolated to limit collateral risk, and grouped with similar assets in E-Mode for better capital efficiency. The result is a protocol flexible enough to list hundreds of assets while remaining robust against the tail risks of any individual one.
 
--
+---
 
 ## Summary
 

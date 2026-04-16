@@ -6,7 +6,7 @@ This is the most Solidity-heavy chapter in the book. If you are here for the eco
 
 <video src="animations/final/architecture.webm" controls autoplay loop muted playsinline style="width:100%;max-width:800px;border-radius:8px;margin:20px 0"></video>
 
--
+---
 
 ## The Pool: A Thin Router
 
@@ -41,7 +41,7 @@ Why this design? Solidity imposes a **24KB size limit** on deployed contracts (E
 
 The Pool is deployed behind an **upgradeable proxy**, so governance can update the implementation without changing the address or migrating state.
 
--
+---
 
 ## The Libraries: Where the Logic Lives
 
@@ -71,7 +71,7 @@ Within each library, the flow is also consistent:
 4. **Execute** (move tokens, mint/burn, update accounting)
 5. **Update interest rates** (recalculate based on new utilization)
 
--
+---
 
 ## The ReserveData Struct: Per-Asset State
 
@@ -101,7 +101,7 @@ The types are deliberately sized - `uint128` instead of `uint256`, `uint40` for 
 
 The `liquidityIndex` and `variableBorrowIndex` are the cumulative multipliers from Chapter 3. The `currentLiquidityRate` and `currentVariableBorrowRate` are the outputs of the interest rate model from Chapter 2. Everything connects.
 
--
+---
 
 ## The Configuration Bitmap: Packing Parameters Into One Slot
 
@@ -147,7 +147,7 @@ function getLiquidationThreshold(
 
 One storage read gives you every risk parameter for a reserve. This matters because these parameters are checked on every supply, borrow, repay, withdraw, and liquidation.
 
--
+---
 
 ## The User Configuration Bitmap
 
@@ -160,7 +160,7 @@ This means the protocol can scan a user's entire position by reading one 256-bit
 
 When computing the health factor, the protocol loops through these bits to find which reserves the user is involved with, then fetches only those reserves' data. This is much cheaper than iterating over all reserves.
 
--
+---
 
 ## The PoolConfigurator
 
@@ -176,7 +176,7 @@ When computing the health factor, the protocol loops through these bits to find 
 
 Every function checks the caller's role through `ACLManager` before executing. Ordinary users never interact with this contract.
 
--
+---
 
 ## The PoolAddressesProvider
 
@@ -192,7 +192,7 @@ Every function checks the caller's role through `ACLManager` before executing. O
 
 Other contracts look up addresses from this registry rather than hardcoding them. This enables upgradeability: to upgrade the Pool, governance deploys a new implementation and calls `setPoolImpl()` on the AddressesProvider, which updates the proxy to point to the new code. Same address, same storage, new logic.
 
--
+---
 
 ## The Oracle
 
@@ -206,7 +206,7 @@ function getAssetPrice(address asset) public view returns (uint256) {
 
 The oracle is called every time the protocol needs to value a position: on borrow (is there enough collateral?), on withdraw (would this break the health factor?), and on liquidation (is this position actually underwater?).
 
--
+---
 
 ## The ACL Manager
 
@@ -240,9 +240,9 @@ function _onlyPoolAdmin() internal view {
 }
 ```
 
-This is covered in detail in the Governance chapter (Chapter 13).
+This is covered in detail in the Governance chapter (Chapter 14).
 
--
+---
 
 ## Token Contracts Per Asset
 
@@ -256,7 +256,7 @@ For every listed asset, three token contracts are deployed:
 
 One critical difference: aTokens are **transferable** (you can send your supply position to someone else), but debt tokens are **non-transferable**. The `transfer()` function on debt tokens reverts. You cannot send your debt to another address.
 
--
+---
 
 ## Summary
 

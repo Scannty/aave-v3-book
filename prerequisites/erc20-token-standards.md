@@ -2,7 +2,7 @@
 
 Every asset in Aave V3 is an ERC-20 token. When you supply USDC, you receive aUSDC (an ERC-20). When you borrow DAI, the protocol mints a variable debt token (an ERC-20) to your address. Understanding the ERC-20 standard - and how some tokens bend its rules - is essential for following Aave's token mechanics.
 
--
+---
 
 ## The Standard ERC-20 Interface
 
@@ -51,7 +51,7 @@ usdc.approve(address(pool), 1000e6);
 pool.supply(address(usdc), 1000e6, onBehalfOf, referralCode);
 ```
 
--
+---
 
 ## Standard Token Implementation
 
@@ -82,7 +82,7 @@ The critical property: **balances only change when `transfer` or `transferFrom` 
 
 This seems obvious, but it is exactly the property that rebasing tokens violate.
 
--
+---
 
 ## What Are Rebasing Tokens?
 
@@ -110,7 +110,7 @@ When `_totalUnderlying` increases (e.g., because interest accrued), everyone's `
 - **aTokens (Aave)**: Balances increase over time as borrow interest accrues
 - **AMPL (Ampleforth)**: Balances increase or decrease based on the token's target price
 
--
+---
 
 ## Why Rebasing Matters for Aave
 
@@ -137,7 +137,7 @@ The liquidity index is a global value that increases monotonically. All aToken h
 
 This design is covered in detail in Chapter 3 (Indexes and Scaled Balances) and Chapter 4 (aTokens).
 
--
+---
 
 ## Challenges with Rebasing Tokens
 
@@ -164,7 +164,7 @@ If a contract caches `balanceOf()` at time T1 and reads it again at T2, the valu
 
 Since balances change without transfers, `Transfer` events do not capture all balance changes. Off-chain indexers that track balances by summing transfer events will compute incorrect values for rebasing tokens.
 
--
+---
 
 ## Non-Transferable Tokens: Debt Tokens
 
@@ -188,7 +188,7 @@ function transferFrom(address, address, uint256) public virtual override returns
 
 Debt tokens still implement the ERC-20 interface so that `balanceOf()` works (wallets can display how much you owe), but the transfer functions revert unconditionally.
 
--
+---
 
 ## ERC-20 Extensions You Will See in Aave
 
@@ -225,7 +225,7 @@ pool.supplyWithPermit(
 
 This saves the user one transaction compared to the traditional approve + supply flow.
 
--
+---
 
 ## Token Decimals
 
@@ -242,7 +242,7 @@ All on-chain math operates on raw integers. There are no floating-point numbers 
 
 Mixing up decimals is a common source of bugs. When comparing values across different tokens (e.g., ETH collateral value vs. USDC debt), the protocol must normalize everything to a common precision. Aave V3 uses internal precision standards (ray = 10^27, wad = 10^18) for this purpose.
 
--
+---
 
 ## Summary
 

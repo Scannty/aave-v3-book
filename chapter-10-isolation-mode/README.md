@@ -1,4 +1,4 @@
-# Chapter 10: Isolation Mode
+# Chapter 11: Isolation Mode
 
 DeFi moves fast. Every week, new tokens launch - governance tokens, liquid staking derivatives, real-world asset tokens, memecoins-turned-infrastructure. Users want to use these tokens as collateral on Aave. More listed assets mean more users, more liquidity, and more revenue.
 
@@ -6,7 +6,7 @@ But new tokens are risky. A freshly launched governance token might have \$5M of
 
 The traditional answer was simple: do not list risky assets. But that limits growth. Aave V3 introduces a better answer: **Isolation Mode**. List the asset, but with strict guardrails that cap the protocol's maximum exposure.
 
--
+---
 
 ## 1. The Risk Problem
 
@@ -26,7 +26,7 @@ Lending against NEW_TOKEN is a different story. If its price drops 50% in minute
 
 **Isolation Mode bounds this risk.** It says: "Yes, list the asset. Let people borrow against it. But cap the total damage."
 
--
+---
 
 ## 2. The Three Guardrails
 
@@ -69,7 +69,7 @@ This prevents a scenario where a user mixes isolated and non-isolated collateral
 
 By requiring sole collateral, the relationship is clear: this user's entire position depends on the isolated asset, and their borrow counts fully against the debt ceiling.
 
--
+---
 
 ## 3. How Isolation Mode Is Triggered
 
@@ -88,7 +88,7 @@ Two-way enforcement prevents mixing:
 
 To exit, disable the isolated collateral (requires no outstanding debt that depends on it) or swap your collateral base by supplying and enabling a non-isolated asset first.
 
--
+---
 
 ## 4. A Complete Example
 
@@ -161,7 +161,7 @@ Alice repays her \$400,000 USDC debt. The `isolationModeTotalDebt` decreases by 
 
 She disables NEW_TOKEN as collateral. She is no longer in Isolation Mode and can now enable other assets as collateral and borrow any asset.
 
--
+---
 
 ## 5. Isolation Mode + E-Mode
 
@@ -179,7 +179,7 @@ A user supplies nUSD, enters Stablecoin E-Mode, and borrows USDC. They get:
 
 This combination lets Aave list a new stablecoin with high capital efficiency (via E-Mode) while still capping risk exposure (via the debt ceiling). It is the best of both worlds.
 
--
+---
 
 ## 6. The Debt Ceiling Mechanics
 
@@ -189,9 +189,25 @@ The debt ceiling counter is tracked per isolated asset in the reserve data as `i
 - **On repay**: The counter decreases by the repaid amount. A saturating subtraction prevents underflow from rounding differences.
 - **On liquidation**: The counter also decreases, freeing capacity under the ceiling for other users.
 
-This means the debt ceiling is a living limit. As users repay or get liquidated, capacity opens up for new borrowers. It is not a one-time allocation.
+In code, the borrow path scales the amount down to 2 decimals, adds it, and checks against the ceiling in a single operation:
 
--
+```solidity
+// IsolationModeLogic.updateIsolatedDebtIfIsolated — borrow path
+uint256 nextIsolationModeTotalDebt = reservesData[isolationModeCollateralAddress]
+    .isolationModeTotalDebt += uint128(
+        amount / 10 ** (reserveCache.reserveConfiguration.getDecimals()
+            - ReserveConfiguration.DEBT_CEILING_DECIMALS)
+    );
+
+require(
+    nextIsolationModeTotalDebt <= isolationModeDebtCeiling,
+    Errors.DEBT_CEILING_EXCEEDED
+);
+```
+
+The repay and liquidation paths subtract the scaled amount back out, clamped to zero so a tiny rounding error cannot underflow the `uint128` counter. This means the debt ceiling is a living limit. As users repay or get liquidated, capacity opens up for new borrowers. It is not a one-time allocation.
+
+---
 
 ## 7. Liquidation in Isolation Mode
 
@@ -213,7 +229,7 @@ When a position is liquidated, the debt counter decreases. If Alice's \$400,000 
 | Alice is liquidated | \$4,600,000 | \$400,000 |
 | Others repay \$1M | \$3,600,000 | \$1,400,000 |
 
--
+---
 
 ## 8. The Governance Progression
 
@@ -243,7 +259,7 @@ How does governance choose a debt ceiling? Several factors:
 
 The ceiling should be set so that even in a total collapse of the isolated asset, the resulting bad debt is absorbable by the Aave safety module and treasury. This is ultimately a judgment call by governance, informed by risk analysis.
 
--
+---
 
 ## Key Takeaways
 

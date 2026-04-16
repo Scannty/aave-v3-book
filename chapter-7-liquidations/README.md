@@ -1,4 +1,4 @@
-# Chapter 7: Collateral, Liquidations, and the Health Factor
+# Chapter 8: Collateral, Liquidations, and the Health Factor
 
 Lending protocols exist because they promise lenders one thing: you will get your money back, plus interest. But Aave lends to anonymous borrowers with no credit checks, no legal recourse, and no collection agencies. The only thing protecting lenders is **overcollateralization** - borrowers must lock up more value than they borrow.
 
@@ -8,7 +8,7 @@ Liquidation is the mechanism that prevents bad debt. When a borrower's position 
 
 This chapter explains the economics of how that system works: the risk parameters that define borrowing limits, the health factor that measures safety, and the liquidation process that enforces it all.
 
--
+---
 
 ## 1. Risk Parameters: The Economic Levers
 
@@ -39,6 +39,8 @@ With ETH's LTV at 80% and liquidation threshold at 82.5%, you can borrow up to 8
 
 Why not make them the same number? Because prices are volatile. If you could borrow right up to the liquidation line, any small price fluctuation would trigger immediate liquidation. The gap gives borrowers a realistic chance to manage their positions.
 
+<video src="animations/final/ltv_buffer.webm" controls autoplay loop muted playsinline style="width:100%;max-width:800px;border-radius:8px;margin:20px 0"></video>
+
 ### Liquidation Bonus: The Incentive for Liquidators
 
 Liquidation does not happen automatically. Someone has to monitor every position on the protocol, detect when one crosses the threshold, submit a transaction, and pay gas. That someone is a **liquidator**, and they need a reason to do this work.
@@ -56,11 +58,15 @@ Higher-risk assets have higher bonuses because they need to attract liquidators 
 
 *Note: actual values vary by deployment and governance decisions. These are illustrative.*
 
+One detail that matters when a borrower has multiple collateral types: **the bonus is read from the collateral the liquidator chose to seize, not the debt asset being repaid**. If the borrower has both WETH (5% bonus) and WBTC (10% bonus) and the liquidator picks WBTC, they get the 10% bonus regardless of what debt they repaid. Rational liquidators pick the highest-bonus collateral available, which is why the bonus table effectively ranks which collateral gets liquidated first when a borrower holds several.
+
 ### Liquidation Protocol Fee
 
 A portion of the liquidation bonus is redirected to the Aave treasury. If the bonus is 5% and the protocol fee is 10% of the bonus, the liquidator keeps 4.5% and the treasury takes 0.5%. This turns every liquidation into a small revenue event for the protocol.
 
--
+Like the bonus, the protocol fee is **configured on the collateral asset, not the debt**. Picking a higher-bonus collateral generally also means paying a higher absolute protocol fee, though the liquidator's net take-home is still larger.
+
+---
 
 ## 2. The Health Factor: One Number to Rule Them All
 
@@ -74,6 +80,8 @@ The health factor (HF) is the single most important number for any borrower. It 
 - **HF < 1**: You are liquidatable. Anyone can close part of your position.
 
 The health factor moves for two reasons: your collateral changes in value (price moves), or your debt grows (interest accrues). Both are constantly happening, which is why the health factor is a living number.
+
+It also moves the other direction - on purpose - when the borrower acts. A position that is drifting toward 1 can be rescued in two symmetric ways: **add collateral** (numerator grows) or **repay part of the debt** (denominator shrinks). Either raises the health factor. This is the borrower's side of the same mechanism liquidators use: both parties are reacting to the same number, just from opposite directions.
 
 ### Numerical Example: Watching the Health Factor Move
 
@@ -117,17 +125,19 @@ If you supply multiple assets as collateral, the protocol computes a weighted av
 
 This blended threshold determines your health factor. More stable collateral in the mix raises your effective threshold and improves your health factor.
 
--
+---
 
 ## 3. The Liquidation Process: An Economic Transaction
 
 When a health factor drops below 1, a liquidation is not a penalty imposed by the protocol. It is an open economic opportunity. Anyone - a bot, a DAO, an individual - can execute it by calling `liquidationCall()` on the Pool contract. No whitelist, no permissions.
 
 The liquidator specifies:
-- Which collateral to seize from the borrower
+- Which collateral to seize from the borrower - **one asset per call**, not a basket. If the borrower has multiple collateral types, the liquidator picks the one that maximizes profit (typically the highest liquidation bonus), and a second call would be needed to touch another.
 - Which debt to repay on their behalf
-- How much debt to cover
+- How much debt to cover. Passing `type(uint256).max` is a common shortcut: the protocol will liquidate the maximum allowed by the close factor without the liquidator having to compute it off-chain.
 - Whether to receive the collateral as aTokens (to keep earning yield) or as the underlying asset
+
+One precondition that surprises newcomers: **the liquidator must already hold the debt asset** in their wallet before calling `liquidationCall()`. The protocol takes the repayment from them up front. Most liquidators don't park idle capital in debt assets; they use a flash loan in the same transaction to borrow the debt asset, liquidate, sell the seized collateral, and repay the flash loan - covered in more detail in Section 5.
 
 ### What Happens Step by Step
 
@@ -154,7 +164,7 @@ If the borrower does not have enough collateral to cover the full bonus, the ava
 
 After liquidation, the borrower has less collateral but also less debt. Their health factor typically improves, often rising back above 1.
 
--
+---
 
 ## 4. The Close Factor: Partial vs. Full Liquidation
 
@@ -175,7 +185,7 @@ When a position is deeply underwater, a 50% liquidation might not restore the he
 
 Consider: if HF = 0.80 and you only liquidate 50% of the debt, the health factor after liquidation might still be below 1, requiring another liquidation. With 100%, a single liquidator can clean up the entire position.
 
--
+---
 
 ## 5. The Liquidation Economy
 
@@ -207,7 +217,7 @@ The competition takes several forms:
 
 The result: healthy positions are almost never at risk of bad debt because the moment they become liquidatable, someone is there to clean them up. The liquidation bonus ensures this market stays active even during high-volatility periods.
 
--
+---
 
 ## 6. Oracle Dependency
 
@@ -221,9 +231,22 @@ Aave V3 uses **Chainlink price feeds** as its primary oracle source, wrapped in 
 
 The price flow during liquidation is straightforward: the liquidator's transaction triggers a health factor recalculation, which queries the oracle for every asset the borrower holds. If the resulting health factor is below 1, the liquidation proceeds. The entire check is synchronous and on-chain - no off-chain components.
 
--
+---
 
-## 7. Complete Liquidation Example
+## 7. When Liquidations Fail: Bad Debt and the Safety Module
+
+Liquidations are the first line of defense, but they are not infallible. If prices drop fast enough that liquidators cannot act in time - or if a position falls so deep underwater that liquidating it would be unprofitable even with the bonus - the protocol accumulates **bad debt**: positions where the debt exceeds the collateral value.
+
+Bad debt is the worst-case outcome. Someone has to absorb the loss, and in a decentralized protocol there is no bank shareholder to eat it. Aave V3 handles this risk on two layers:
+
+- **Safety Module.** A staking contract where AAVE token holders lock their tokens in exchange for rewards. In return, up to 30% of the staked AAVE can be slashed by governance to cover protocol shortfalls. This gives the protocol a capital backstop that sits outside the lending pools.
+- **Governance intervention.** For specific bad debt events (a broken oracle, a failed liquidation cascade), the Aave DAO can vote on remediation - using treasury funds, socializing losses across depositors as a last resort, or adjusting parameters to prevent recurrence.
+
+The competitive liquidation market is designed to prevent bad debt from ever accumulating. The Safety Module exists for the cases where it does anyway.
+
+---
+
+## 8. Complete Liquidation Example
 
 Let us walk through a full scenario with concrete numbers.
 
@@ -279,7 +302,7 @@ Carol, a liquidator bot, repays **\$3,025 of USDC** (50% of Bob's debt).
 
 The system worked: Bob's risky position was brought back to solvency. Carol earned a profit for performing a useful service. The protocol collected a fee. No bad debt was created. Lenders are whole.
 
--
+---
 
 ## Key Takeaways
 

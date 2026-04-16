@@ -1,8 +1,8 @@
-# Chapter 11: Reserves, Treasury, and Protocol Revenue
+# Chapter 13: Reserves, Treasury, and Protocol Revenue
 
 Every sustainable business needs a revenue model. Aave is no different - except its revenue model is embedded directly in smart contract logic, not in invoices or subscription plans. Every borrow, every flash loan, every liquidation quietly directs a small share of value to the Aave treasury. Understanding this flow is essential because it explains the protocol's long-term sustainability, what funds governance operations, and why suppliers don't receive 100% of the interest borrowers pay.
 
--
+---
 
 ## 1. Aave's Three Revenue Streams
 
@@ -18,7 +18,7 @@ The reserve factor is the primary, steady revenue stream - it generates income a
 
 All three revenue streams ultimately result in the same thing: **aTokens minted to the treasury address**. The treasury is, in economic terms, just another depositor in Aave - one whose balance grows automatically from both new revenue and the interest earned on its existing holdings.
 
--
+---
 
 ## 2. The Reserve Factor: Aave's Tax on Borrow Interest
 
@@ -60,7 +60,7 @@ $$\text{Suppliers receive (90\%)} = \$5{,}000{,}000 \times 90\% = \$4{,}500{,}00
 
 That \$500,000 per year is for USDC alone. Multiply across dozens of assets and multiple chain deployments, and the reserve factor becomes a substantial revenue engine.
 
--
+---
 
 ## 3. How Treasury Accrual Works
 
@@ -105,7 +105,7 @@ Here is the subtle but powerful implication: once the treasury holds aUSDC, thos
 
 If the treasury holds \$10 million of aUSDC and the USDC supply rate is 3%, it earns \$300,000 per year in passive interest - on top of new revenue flowing in from the reserve factor.
 
--
+---
 
 ## 4. Flash Loan Revenue
 
@@ -136,7 +136,7 @@ The supplier portion stays in the aToken contract automatically (it increases th
 
 Aave V3 introduced the `FLASH_BORROWER` role. Addresses granted this role pay zero premium on flash loans. Why would the protocol give away revenue? Because some integrations (like liquidation bots that protect the protocol's health) are worth subsidizing. A liquidation bot that can flash-borrow for free will liquidate more positions, reducing bad debt risk for the entire system.
 
--
+---
 
 ## 5. Liquidation Protocol Fee
 
@@ -169,7 +169,7 @@ The liquidator still profits handsomely (\$45 on a \$1,000 liquidation), but the
 
 Liquidation protocol fees are the most volatile revenue source. During calm markets, few positions are liquidated and this revenue is minimal. During sharp downturns - exactly when a protocol's treasury needs to be robust - liquidation revenue surges. It acts as a natural counter-cyclical revenue stream.
 
--
+---
 
 ## 6. The Treasury as Aave's Balance Sheet
 
@@ -196,7 +196,7 @@ To withdraw funds, governance passes a proposal that redeems aTokens from the tr
 
 The treasury's economic position is remarkably favorable. It receives new revenue from three sources, and all of that revenue earns additional interest once it arrives as aTokens. Over time, this compounding creates a growing safety buffer for the protocol. A well-funded treasury is the first line of defense against black swan events.
 
--
+---
 
 ## 7. PoolConfigurator: The Admin Panel
 
@@ -234,7 +234,7 @@ This separation of concerns means the Pool itself contains no admin logic. It st
 
 One of the most consequential governance actions is listing a new asset. When governance calls `initReserves()` on PoolConfigurator, the protocol deploys proxy contracts for the aToken, stable debt token, and variable debt token, initializes them with the correct parameters, registers the reserve in the Pool, and sets the interest rate strategy. A single governance proposal can list multiple assets at once.
 
--
+---
 
 ## 8. Putting It All Together: The Revenue Lifecycle
 
@@ -264,7 +264,7 @@ $$\text{Total} = \$266{,}700$$
 
 And this is for a single asset on a single chain. Across all assets and all deployments, Aave generates millions in monthly revenue, all flowing into a treasury that earns compound interest on its holdings.
 
--
+---
 
 ## Summary
 

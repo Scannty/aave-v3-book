@@ -4,7 +4,6 @@
   * [Overview](prerequisites/README.md)
   * [Chainlink Price Feeds](prerequisites/chainlink-oracles.md)
   * [Proxy Patterns](prerequisites/proxy-patterns.md)
-  * [DeFi Liquidations](prerequisites/defi-liquidations.md)
   * [ERC-20 and Rebasing Tokens](prerequisites/erc20-token-standards.md)
 
 * **Core Protocol**
@@ -23,7 +22,7 @@
   * [11. Isolation Mode](chapter-10-isolation-mode/README.md)
   * [12. Caps, Siloed Borrowing, Repay with aTokens](chapter-13-risk-features/README.md)
 
-* **Protocol Economics**
-  * [13. Reserves and Treasury](chapter-11-reserves-and-treasury/README.md)
-  * [14. Governance and Admin](chapter-12-governance/README.md)
-  * [15. L2 Deployments and GHO](chapter-14-l2-and-gho/README.md)
+* **Protocol Economics** — *coming soon*
+  * 13. Reserves and Treasury
+  * 14. Governance and Admin
+  * 15. L2 Deployments and GHO

@@ -182,9 +182,10 @@ class LTVBufferZone(Scene):
             include_numbers=False,
         ).shift(DOWN * 0.5)
 
-        # Percentage labels
+        # Percentage labels along the axis (omit 82.5% — it overlaps with 80% and
+        # the exact value is already called out by the Liq. Threshold arrow above).
         pct_labels = VGroup()
-        for v in [0, 20, 40, 60, 80, 82.5, 100]:
+        for v in [0, 20, 40, 60, 80, 100]:
             l = Text(f"{v}%", font_size=16, color=GREY_B)
             l.next_to(line.n2p(v), DOWN, buff=0.2)
             pct_labels.add(l)
@@ -217,29 +218,42 @@ class LTVBufferZone(Scene):
             Dot(line.n2p(82.5)), Dot(line.n2p(100))
         ).get_center() + UP * 0.2)
 
-        # Zone labels
+        # Zone labels — Safe and Liquidatable sit above their zones. The buffer
+        # zone is too narrow for an inline label, so we call it out from below
+        # with a leader line pointing up to the yellow sliver.
         safe_label = Text("Safe to Borrow", font_size=18, color=GREEN, weight=BOLD).move_to(
             safe_zone.get_center() + UP * 0.8
-        )
-        buffer_label = Text("Buffer", font_size=14, color=YELLOW, weight=BOLD).move_to(
-            buffer_zone.get_center() + UP * 0.8
         )
         danger_label = Text("Liquidatable", font_size=18, color=RED, weight=BOLD).move_to(
             danger_zone.get_center() + UP * 0.8
         )
-
-        # Markers
-        ltv_arrow = Arrow(
-            line.n2p(80) + UP * 1.8, line.n2p(80) + UP * 0.7,
-            color=GREEN, buff=0, stroke_width=2
+        buffer_label = Text("Buffer", font_size=14, color=YELLOW, weight=BOLD).move_to(
+            buffer_zone.get_center() + DOWN * 1.4
         )
-        ltv_text = Text("Max LTV = 80%", font_size=16, color=GREEN).next_to(ltv_arrow, UP, buff=0.1)
+        buffer_leader = Line(
+            buffer_label.get_top() + UP * 0.05,
+            buffer_zone.get_bottom() + DOWN * 0.05,
+            color=YELLOW, stroke_width=1.5,
+        )
+
+        # Markers — stagger arrows vertically so the labels "Max LTV = 80%" and
+        # "Liq. Threshold = 82.5%" do not collide (80% and 82.5% are only 2.5
+        # units apart on a 100-unit line). LTV sits lower, Liq. Threshold higher.
+        ltv_arrow = Arrow(
+            line.n2p(80) + UP * 1.3, line.n2p(80) + UP * 0.6,
+            color=GREEN, buff=0, stroke_width=3, max_tip_length_to_length_ratio=0.35,
+        )
+        ltv_text = Text("Max LTV = 80%", font_size=18, color=GREEN).next_to(
+            ltv_arrow, UP, buff=0.08
+        ).shift(LEFT * 1.2)
 
         liq_arrow = Arrow(
-            line.n2p(82.5) + UP * 1.8, line.n2p(82.5) + UP * 0.7,
-            color=RED, buff=0, stroke_width=2
+            line.n2p(82.5) + UP * 2.6, line.n2p(82.5) + UP * 0.6,
+            color=RED, buff=0, stroke_width=3, max_tip_length_to_length_ratio=0.15,
         )
-        liq_text = Text("Liq. Threshold = 82.5%", font_size=16, color=RED).next_to(liq_arrow, UP, buff=0.1)
+        liq_text = Text("Liq. Threshold = 82.5%", font_size=18, color=RED).next_to(
+            liq_arrow, UP, buff=0.08
+        ).shift(RIGHT * 1.4)
 
         # Animate
         self.play(Create(line), run_time=1)
@@ -250,7 +264,12 @@ class LTVBufferZone(Scene):
         self.play(GrowArrow(ltv_arrow), Write(ltv_text), run_time=0.8)
         self.wait(0.5)
 
-        self.play(FadeIn(buffer_zone), Write(buffer_label), run_time=0.8)
+        self.play(
+            FadeIn(buffer_zone),
+            Create(buffer_leader),
+            Write(buffer_label),
+            run_time=0.8,
+        )
         self.play(GrowArrow(liq_arrow), Write(liq_text), run_time=0.8)
         self.wait(0.5)
 

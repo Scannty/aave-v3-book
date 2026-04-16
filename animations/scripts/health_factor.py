@@ -22,7 +22,6 @@ class HealthFactorVisualization(Scene):
         ).shift(DOWN * 0.3)
 
         x_label = Text("ETH Price ($)", font_size=22, color=GREY_B).next_to(axes.c2p(2100, 0), DOWN + RIGHT, buff=0.2)
-        y_label = Text("Health Factor", font_size=22, color=GREY_B).next_to(axes.c2p(1000, 2.5), UP + LEFT, buff=0.2)
 
         # Price labels
         price_labels = VGroup()
@@ -56,8 +55,10 @@ class HealthFactorVisualization(Scene):
             axes.c2p(1000, 1), axes.c2p(2100, 1),
             color=RED, dash_length=0.15
         )
+        # Anchor the HF=1 callout to the left side of the chart so the central
+        # LIQUIDATED! banner at the end does not paint over it.
         liq_text = Text("HF = 1 (Liquidation)", font_size=20, color=RED).next_to(
-            axes.c2p(1500, 1), UP, buff=0.15
+            axes.c2p(1100, 1), UP, buff=0.15
         )
 
         # Find the price where HF = 1
@@ -67,17 +68,23 @@ class HealthFactorVisualization(Scene):
             axes.c2p(liq_price, 0), axes.c2p(liq_price, 1),
             color=YELLOW, dash_length=0.1
         )
-        liq_price_label = Text(f"${liq_price:.0f}", font_size=20, color=YELLOW).next_to(
-            axes.c2p(liq_price, 0), DOWN, buff=0.3
+        # Place the $1818 callout below the "$1800" tick label. Using a moderate
+        # buff keeps it separated from "$1800" while still inside the frame.
+        liq_price_label = Text(f"${liq_price:.0f}", font_size=20, color=YELLOW, weight=BOLD).next_to(
+            axes.c2p(liq_price, 0), DOWN, buff=0.55
         )
 
-        # Position info box
-        info = VGroup(
+        # Position info box. The UL corner sits over the y-axis line and its
+        # tick labels, so we pair the text with an opaque black background that
+        # masks whatever is underneath.
+        info_text = VGroup(
             Text("Position:", font_size=22, color=WHITE, weight=BOLD),
             Text("Collateral: 10 ETH", font_size=20, color=GREY_B),
             Text("Debt: 15,000 USDC", font_size=20, color=GREY_B),
             Text("Liq. Threshold: 82.5%", font_size=20, color=GREY_B),
         ).arrange(DOWN, aligned_edge=LEFT, buff=0.1).to_corner(UL, buff=0.8).shift(DOWN * 0.5)
+        info_bg = BackgroundRectangle(info_text, color=BLACK, fill_opacity=1.0, buff=0.15)
+        info = VGroup(info_bg, info_text)
 
         # Danger zone shading
         danger_zone = Polygon(
@@ -95,7 +102,7 @@ class HealthFactorVisualization(Scene):
 
         # Animation
         self.play(Write(title), run_time=1)
-        self.play(Create(axes), Write(x_label), Write(y_label), run_time=1.5)
+        self.play(Create(axes), Write(x_label), run_time=1.5)
         self.play(FadeIn(price_labels), FadeIn(hf_labels), run_time=0.8)
         self.play(FadeIn(info), run_time=0.8)
 
@@ -133,7 +140,9 @@ class HealthFactorVisualization(Scene):
             self.play(Write(hf_value), run_time=0.5)
             self.wait(0.5)
 
-        # Flash "LIQUIDATED" at the end
+        # Flash "LIQUIDATED" at the end — clear the HF=1 callout first so the
+        # banner has a clean area to land in.
+        self.play(FadeOut(liq_text), FadeOut(hf_value), run_time=0.4)
         liquidated = Text("LIQUIDATED!", font_size=48, color=RED, weight=BOLD).move_to(ORIGIN)
         flash_rect = SurroundingRectangle(liquidated, color=RED, buff=0.3, corner_radius=0.1)
         self.play(FadeIn(liquidated), Create(flash_rect), run_time=0.8)

@@ -1,10 +1,10 @@
-# Chapter 12: Governance and Admin Controls
+# Chapter 14: Governance and Admin Controls
 
 Aave V3 is a decentralized protocol, but "decentralized" does not mean "unmanaged." Someone needs to list new assets, adjust risk parameters during market shifts, pause the protocol when an exploit is discovered, and upgrade contracts when bugs are found. The question is not whether these powers exist - they must - but how they are distributed, constrained, and made accountable.
 
 Aave's answer is a layered trust hierarchy: ordinary users at the bottom with no special privileges, specialized roles in the middle with narrow powers, and full governance at the top with broad authority but slow execution. Every layer is designed around a single principle: **the most dangerous operations require the most rigorous process**.
 
--
+---
 
 ## 1. The Central Registry: PoolAddressesProvider
 
@@ -31,7 +31,7 @@ The registry provides two capabilities that are essential for a long-lived proto
 
 The PoolAddressesProvider is owned by the governance executor. Only governance can change what addresses the registry points to. There is also a `PoolAddressesProviderRegistry` that tracks all PoolAddressesProvider instances across different Aave markets on a chain, providing a single entry point for discovering all markets.
 
--
+---
 
 ## 2. The Trust Hierarchy: Who Can Do What
 
@@ -89,7 +89,7 @@ The owner of the PoolAddressesProvider sits at the top. This address can upgrade
 | 5 | Pool Admin | Full configuration and upgrades | Governance executor |
 | 6 | Provider Owner | Upgrade core implementations, change ACL admin | Governance executor (long timelock) |
 
--
+---
 
 ## 3. The Governance Flow: From Idea to Execution
 
@@ -135,7 +135,7 @@ After the timelock expires, anyone can trigger execution. The governance executo
 | Timelock | Last-resort safety window | Malicious proposals executing instantly |
 | Execution | Permissionless triggering | Proposals stalling due to inaction |
 
--
+---
 
 ## 4. Emergency Controls: Freeze vs. Pause
 
@@ -182,7 +182,7 @@ Pausing is appropriate during an active exploit where any transaction - even a r
 
 This separation ensures that emergency response is fast while permanent changes go through rigorous review.
 
--
+---
 
 ## 5. Upgradeability: Same Address, New Logic
 
@@ -207,7 +207,7 @@ The critical constraint: new implementations must maintain storage compatibility
 
 Upgrades are the most sensitive governance action. A malicious Pool implementation could drain every asset in the protocol. This is why upgrades require the highest level of authority and the longest timelock.
 
--
+---
 
 ## 6. Portal: Cross-Chain Liquidity (Brief Overview)
 
@@ -224,7 +224,7 @@ Portal is an Aave V3 feature designed for cross-chain liquidity movement. It all
 
 Portal has seen limited adoption in practice. Cross-chain bridging remains a challenging problem with significant trust assumptions, and most Aave V3 deployments operate as independent markets on each chain. The architecture is available for future use as cross-chain infrastructure matures.
 
--
+---
 
 ## 7. Why the Guardian Cannot Have More Power
 
@@ -245,7 +245,7 @@ The principle is clear: **the cost of compromise should be proportional to the s
 | Parameter adjustment needed | Governance vote | Days | Reserve factor update for a stable asset |
 | Contract bug requiring fix | Governance upgrade | Weeks | Non-critical storage optimization |
 
--
+---
 
 ## 8. Putting It All Together
 
@@ -255,7 +255,7 @@ Ordinary users need no permission - the protocol is open. Risk parameter adjustm
 
 This layered approach means Aave can respond to a market crash in minutes (Guardian pauses), implement a risk parameter change in days (Risk Admin or governance), and upgrade its core logic in weeks (full governance with extended timelock). Each speed corresponds to the appropriate level of scrutiny for the action being taken.
 
--
+---
 
 ## Summary
 

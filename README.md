@@ -21,9 +21,11 @@ The chapters are designed to be read in order. Each chapter builds on concepts i
 1. **Chapters 1-3** establish the architecture and core math (interest rates, indexes)
 2. **Chapters 4-5** cover the token layer (aTokens, debt tokens)
 3. **Chapter 6** ties it all together with the full supply/borrow/repay/withdraw flows
-4. **Chapters 7-8** cover liquidations and flash loans
-5. **Chapters 9-10** cover Aave V3's unique features: E-Mode and Isolation Mode
-6. **Chapters 11-12** cover protocol economics and governance
+4. **Chapter 7** walks through the contract architecture
+5. **Chapters 8-9** cover liquidations and flash loans
+6. **Chapters 10-11** cover Aave V3's unique features: E-Mode and Isolation Mode
+7. **Chapter 12** covers additional risk features (caps, siloed borrowing, repay with aTokens)
+8. **Chapters 13-15** — protocol economics, governance, and L2/GHO — *coming soon*
 
 Take your time. Mastering the entire protocol in a single sitting isn't realistic — pace yourself and revisit sections as needed.
 

@@ -4,7 +4,7 @@ This chapter covers one of the most elegant design patterns in all of DeFi: how 
 
 <video src="animations/final/liquidity_index.webm" controls autoplay loop muted playsinline style="width:100%;max-width:800px;border-radius:8px;margin:20px 0"></video>
 
--
+---
 
 ## The Problem: You Cannot Update 10,000 Balances
 
@@ -23,7 +23,7 @@ So Aave needs a system where:
 
 The solution is **indexes** and **scaled balances**.
 
--
+---
 
 ## The Index: A Cumulative Multiplier
 
@@ -85,7 +85,7 @@ Indexes are not updated on a schedule. They update whenever *any* user interacts
 
 Between interactions, the stored indexes are technically stale. But as we will see, `balanceOf()` computes the live value on the fly so balances are always accurate.
 
--
+---
 
 ## Scaled Balances: The Accounting Trick
 
@@ -109,7 +109,7 @@ You earned \$47.62, which is exactly the interest that accrued between index 1.0
 
 The same principle applies to debt. When you borrow, your debt is divided by the variable borrow index. To find your current debt, multiply by the current borrow index.
 
--
+---
 
 ## How the Index Evolves With Changing Rates
 
@@ -131,7 +131,7 @@ They earned 0.218 ETH across three months with three different interest rates. T
 
 This is the fundamental insight: **the index is a running product of all historical rate intervals.** Each update multiplies the old index by `(1 + rate × timeElapsed)`, and the result encodes the entire interest history.
 
--
+---
 
 ## Alice and Bob: A Complete Walkthrough
 
@@ -210,7 +210,7 @@ Alice's remaining 600 USDC has grown to 627.27 (earning the same rate as everyon
 
 The system handles deposits, withdrawals, and different entry times seamlessly, all through one global index.
 
--
+---
 
 ## Why This Design Is Elegant
 
@@ -228,7 +228,7 @@ This gives you:
 
 **Correctness under concurrent deposits.** Multiple users depositing at different times and amounts are all handled correctly. Each user's scaled balance captures their entry point, and the ratio between indexes handles everything else.
 
--
+---
 
 ## How "Interest Accrues" Without Any Transaction
 
@@ -265,7 +265,7 @@ This means the returned balance is always up-to-date, even if no one has touched
 
 This is also why aToken balances appear to change continuously in wallet UIs that poll `balanceOf()` - each call returns a slightly larger number as time passes.
 
--
+---
 
 ## The Same Pattern for Debt
 
@@ -281,7 +281,7 @@ Your debt grows over time as the borrow index increases, just as supply balances
 
 When you repay, the protocol burns the corresponding scaled debt amount. Partial repayments work exactly like partial withdrawals in the supply example above.
 
--
+---
 
 ## Putting It All Together: The Supply Flow
 
@@ -295,7 +295,7 @@ Here is the complete sequence when someone calls `Pool.supply(USDC, 1000)`:
 
 Every operation follows the same pattern: **update state first, then act.** This ensures that all interest accrual is accounted for before any balances change, preventing users from gaming the timing of their transactions.
 
--
+---
 
 ## Summary
 
