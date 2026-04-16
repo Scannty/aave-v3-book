@@ -1,4 +1,5 @@
 manim-env/
+venv/
 animations/videos/
 __pycache__/
 *.pyc
