@@ -4,6 +4,8 @@
   <meta charset="UTF-8">
   <title>The Aave V3 Book</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" type="image/svg+xml" href="waving-aave-hat-purple.svg">
+  <link rel="apple-touch-icon" href="waving-aave-hat-purple.svg">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/docsify-themeable@0/dist/css/theme-simple-dark.css">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
   <style>
@@ -11,6 +13,106 @@
       --base-font-size: 16px;
       --theme-color: #B6509E;
       --sidebar-width: 280px;
+    }
+    /* AI copy button - split button with dropdown, Mintlify-style */
+    .ai-copy {
+      float: right;
+      position: relative;
+      display: inline-flex;
+      margin: 0 0 1rem 1rem;
+      font-family: inherit;
+    }
+    .ai-copy-main,
+    .ai-copy-chevron {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 10px;
+      font-size: 13px;
+      font-family: inherit;
+      color: var(--text-color-base, #e5e7eb);
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      cursor: pointer;
+      transition: background 0.15s ease, border-color 0.15s ease;
+    }
+    .ai-copy-main:hover,
+    .ai-copy-chevron:hover {
+      background: rgba(255, 255, 255, 0.08);
+      border-color: rgba(255, 255, 255, 0.2);
+    }
+    .ai-copy-main:focus,
+    .ai-copy-chevron:focus,
+    .ai-copy-item:focus { outline: none; }
+    .ai-copy-main {
+      border-radius: 6px 0 0 6px;
+      border-right-width: 0 !important;
+    }
+    .ai-copy-chevron {
+      border-radius: 0 6px 6px 0;
+      padding: 6px 8px !important;
+    }
+    .ai-copy.copied .ai-copy-main {
+      background: #2ea043 !important;
+      border-color: #2ea043 !important;
+      color: #fff !important;
+    }
+    .ai-copy svg { width: 14px; height: 14px; flex-shrink: 0; }
+    .ai-copy-menu {
+      position: absolute;
+      top: calc(100% + 6px);
+      right: 0;
+      min-width: 280px;
+      padding: 6px;
+      background: #1a1d24;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 8px;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+      z-index: 1000;
+    }
+    .ai-copy-menu[hidden] { display: none; }
+    .ai-copy-item,
+    .ai-copy-item:hover,
+    .ai-copy-item:visited,
+    .ai-copy-item:focus {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      width: 100%;
+      padding: 8px 10px;
+      background: transparent;
+      border: none;
+      border-radius: 6px;
+      color: inherit;
+      text-align: left;
+      text-decoration: none !important;
+      cursor: pointer;
+      font-family: inherit;
+      font-size: 13px;
+    }
+    .ai-copy-item *, .ai-copy-item *:hover { text-decoration: none !important; }
+    .ai-copy-item:hover { background: rgba(255, 255, 255, 0.06); }
+    .ai-copy-item svg {
+      width: 16px;
+      height: 16px;
+      margin-top: 2px;
+      opacity: 0.85;
+    }
+    .ai-copy-item-title {
+      color: var(--text-color-base, #e5e7eb);
+      font-weight: 500;
+      line-height: 1.3;
+    }
+    .ai-copy-item-sub {
+      color: rgba(255, 255, 255, 0.5);
+      font-size: 12px;
+      line-height: 1.3;
+      margin-top: 2px;
+    }
+    .ai-copy-divider {
+      height: 1px;
+      background: rgba(255, 255, 255, 0.08);
+      margin: 4px 2px;
     }
   </style>
 </head>
@@ -28,7 +130,112 @@
         depth: 3
       },
       auto2top: true,
-      coverpage: false
+      coverpage: false,
+      plugins: [
+        function (hook, vm) {
+          var ICONS = {
+            copy: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>',
+            chevron: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>',
+            markdown: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M6 15V9l3 3 3-3v6"/><path d="M16 9v6m0 0l-2-2m2 2l2-2"/></svg>',
+            openai: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M22.28 9.82a5.98 5.98 0 0 0-.52-4.92 6.05 6.05 0 0 0-6.52-2.9A6.02 6.02 0 0 0 10.82 0 6.05 6.05 0 0 0 5.06 4.18a5.98 5.98 0 0 0-4 2.9 6.05 6.05 0 0 0 .74 7.1 5.98 5.98 0 0 0 .52 4.92 6.06 6.06 0 0 0 6.52 2.9A5.98 5.98 0 0 0 13.36 24a6.05 6.05 0 0 0 5.76-4.18 5.98 5.98 0 0 0 4-2.9 6.05 6.05 0 0 0-.84-7.1zm-9.02 12.63a4.48 4.48 0 0 1-2.88-1.04l.14-.08 4.78-2.76a.78.78 0 0 0 .4-.68v-6.74l2.02 1.17a.07.07 0 0 1 .04.06v5.58a4.5 4.5 0 0 1-4.5 4.49zM3.6 18.56a4.48 4.48 0 0 1-.54-3.02l.14.08 4.78 2.76a.78.78 0 0 0 .78 0l5.84-3.37v2.34a.07.07 0 0 1-.03.06L9.74 20.22a4.5 4.5 0 0 1-6.14-1.66zM2.34 8.11a4.48 4.48 0 0 1 2.35-1.98v5.69a.78.78 0 0 0 .39.68l5.82 3.36-2.02 1.16a.07.07 0 0 1-.07 0l-4.83-2.8a4.5 4.5 0 0 1-1.64-6.1zm16.6 3.86L13.1 8.59l2.02-1.16a.07.07 0 0 1 .07 0l4.83 2.8a4.5 4.5 0 0 1-.68 8.1v-5.69a.79.79 0 0 0-.4-.67zm2.01-3.02-.14-.09-4.77-2.77a.78.78 0 0 0-.79 0L9.41 9.46V7.11a.07.07 0 0 1 .03-.06l4.83-2.79a4.5 4.5 0 0 1 6.68 4.66zM8.31 13.1l-2.02-1.17a.07.07 0 0 1-.04-.05V6.31a4.5 4.5 0 0 1 7.38-3.45l-.14.08-4.78 2.76a.78.78 0 0 0-.4.68zm1.09-2.38 2.6-1.5 2.6 1.5v3l-2.6 1.5-2.6-1.5z"/></svg>',
+            claude: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M4.709 15.955 10.27 12.83l.094-.276-.094-.15H9.993l-.946-.058-3.23-.087-2.798-.118-2.714-.145L0 11.898l.692-1.082 5.81-.39 7.334-.15L13.836 0l1.09.174 2.17 1.065 2.171.933L17.45 3.93l-.59.464.081 1.386.138 5.825.138 1.21.174.094 1.386-.145 1.676-.081.566.234.066.29-.218.145-3.158.276.03.317.072 2.193.145 1.386-.051.122-.094.167-1.386-1.021.138-2.253-.072-1.66-.018-.574-.195-.058-6.074 10.293-.53.267-.282-.116.052-.464-.41-2.68-2.48 2.13-.317.174-.473-.174.116-.435 2.047-2.515-1.03-1.246-1.387.08-.566-.158-.145-.464.472-.58.145-.079zm2.91-1.735.31 1.386-.31-.174-.138-1.212zm6.48-4.207.13-.282-2.24-1.082.086-4.207-2.345.132-1.16-.31-.29 1.487.086.682 2.51-.493-.174 4.206.29.652 1.387.638 1.386.595 1.025.16.087-2.253-.682.073zm-2.515-.595 3.56-.174-.21 3.96 1.029-2.023-1.08-1.966.64-.057 1.387 1.508.348 1.5-.5 2.006-2.29-1.387-1.387-.58-1.387-.58v.406l-2.25.087-1.388.522-.29.522-.174.522.29.522 2.35.522v-.812l-2.16-.696.985-.29 2.25.116-.232-2.69-2.28-.23-.58-.08-.64.29 1.15.52-1.03-.23 1.03.58z"/></svg>',
+            link: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17L17 7"/><polyline points="7 7 17 7 17 17"/></svg>'
+          };
+
+          function buildUI() {
+            var section = document.querySelector('.markdown-section');
+            if (!section || section.querySelector('.ai-copy')) return;
+
+            var mdUrl;
+            try {
+              mdUrl = new URL(vm.route.file, document.baseURI).href;
+            } catch (e) {
+              mdUrl = vm.route.file;
+            }
+            var prompt = 'Read from ' + mdUrl + ' and help me understand this page.';
+            var chatgptUrl = 'https://chatgpt.com/?hints=search&q=' + encodeURIComponent(prompt);
+            var claudeUrl = 'https://claude.ai/new?q=' + encodeURIComponent(prompt);
+
+            var container = document.createElement('div');
+            container.className = 'ai-copy';
+            container.innerHTML =
+              '<button class="ai-copy-main" type="button" title="Copy page as markdown">' +
+                ICONS.copy + '<span>Copy</span>' +
+              '</button>' +
+              '<button class="ai-copy-chevron" type="button" aria-label="More copy options">' +
+                ICONS.chevron +
+              '</button>' +
+              '<div class="ai-copy-menu" hidden>' +
+                '<button class="ai-copy-item" data-action="copy" type="button">' +
+                  ICONS.copy +
+                  '<div><div class="ai-copy-item-title">Copy page</div>' +
+                  '<div class="ai-copy-item-sub">Copy page as Markdown for LLMs</div></div>' +
+                '</button>' +
+                '<a class="ai-copy-item" data-action="view" target="_blank" rel="noopener">' +
+                  ICONS.markdown +
+                  '<div><div class="ai-copy-item-title">View as Markdown ↗</div>' +
+                  '<div class="ai-copy-item-sub">View this page as plain text</div></div>' +
+                '</a>' +
+                '<div class="ai-copy-divider"></div>' +
+                '<a class="ai-copy-item" data-action="chatgpt" target="_blank" rel="noopener">' +
+                  ICONS.openai +
+                  '<div><div class="ai-copy-item-title">Open in ChatGPT ↗</div>' +
+                  '<div class="ai-copy-item-sub">Ask ChatGPT about this page</div></div>' +
+                '</a>' +
+                '<a class="ai-copy-item" data-action="claude" target="_blank" rel="noopener">' +
+                  ICONS.claude +
+                  '<div><div class="ai-copy-item-title">Open in Claude ↗</div>' +
+                  '<div class="ai-copy-item-sub">Ask Claude about this page</div></div>' +
+                '</a>' +
+              '</div>';
+
+            var mainBtn = container.querySelector('.ai-copy-main');
+            var chevronBtn = container.querySelector('.ai-copy-chevron');
+            var menu = container.querySelector('.ai-copy-menu');
+
+            container.querySelector('[data-action="view"]').href = vm.route.file;
+            container.querySelector('[data-action="chatgpt"]').href = chatgptUrl;
+            container.querySelector('[data-action="claude"]').href = claudeUrl;
+
+            function copyPage() {
+              fetch(vm.route.file)
+                .then(function (res) { return res.text(); })
+                .then(function (md) { return navigator.clipboard.writeText(md); })
+                .then(function () {
+                  container.classList.add('copied');
+                  mainBtn.querySelector('span').textContent = 'Copied';
+                  setTimeout(function () {
+                    container.classList.remove('copied');
+                    mainBtn.querySelector('span').textContent = 'Copy';
+                  }, 1500);
+                })
+                .catch(function (err) {
+                  console.error('Copy failed:', err);
+                  mainBtn.querySelector('span').textContent = 'Failed';
+                  setTimeout(function () {
+                    mainBtn.querySelector('span').textContent = 'Copy';
+                  }, 1500);
+                });
+            }
+
+            mainBtn.addEventListener('click', copyPage);
+            container.querySelector('[data-action="copy"]').addEventListener('click', function () {
+              copyPage();
+              menu.hidden = true;
+            });
+            chevronBtn.addEventListener('click', function (e) {
+              e.stopPropagation();
+              menu.hidden = !menu.hidden;
+            });
+            container.addEventListener('click', function (e) { e.stopPropagation(); });
+            document.addEventListener('click', function () { menu.hidden = true; });
+
+            section.insertBefore(container, section.firstChild);
+          }
+
+          hook.doneEach(buildUI);
+        }
+      ]
     }
   </script>
   <script src="https://cdn.jsdelivr.net/npm/docsify@4/lib/docsify.min.js"></script>

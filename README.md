@@ -10,7 +10,7 @@ Unlike documentation that tells you *how to use* Aave, this book explains *how A
 
 ## Who This Book Is For
 
-This book is written for **intermediate-to-advanced Solidity developers** who want to deeply understand Aave V3's internals. You should be comfortable reading Solidity and have a basic understanding of DeFi lending concepts.
+This book is written for developers **familiar with Solidity** who want to deeply understand Aave V3's internals. You should be comfortable reading Solidity and have a basic understanding of DeFi lending concepts.
 
 If you're new to DeFi lending, start with the [Prerequisites](prerequisites/README.md) section first.
 
